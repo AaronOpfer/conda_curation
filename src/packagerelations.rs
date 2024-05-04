@@ -15,6 +15,12 @@ pub struct RemovedUnsatisfiableLog<'a> {
     pub cause_filename: Option<&'a str>,
 }
 
+pub struct RemovedBecauseIncompatibleLog<'a> {
+    pub filename: &'a str,
+    pub package_name: &'a str,
+    pub incompatible_with: &'a str,
+}
+
 pub struct RemovedByUserLog<'a> {
     pub filename: &'a str,
     pub package_name: &'a str,
@@ -24,6 +30,17 @@ pub struct RemovedBySupercedingBuildLog<'a> {
     pub filename: &'a str,
     pub package_name: &'a str,
     pub build_number: BuildNumber,
+}
+
+pub struct RemovedByDevRcPolicyLog<'a> {
+    pub filename: &'a str,
+    pub package_name: &'a str,
+}
+
+pub struct RemovedWithFeatureLog<'a> {
+    pub filename: &'a str,
+    pub package_name: &'a str,
+    pub feature: &'a str,
 }
 
 impl<'a> std::fmt::Display for RemovedUnsatisfiableLog<'a> {
@@ -59,9 +76,7 @@ impl PkgIdx {
     }
 
     fn range_to(self, offset: PkgIdxOffset) -> Range<usize> {
-        {
-            self.index()..self.index() + offset.offset()
-        }
+        self.index()..self.index() + offset.offset()
     }
 }
 
@@ -84,6 +99,19 @@ impl PkgIdxOffset {
         PkgIdxOffset {
             offset: u16::try_from(diff).expect("too many packages"),
         }
+    }
+}
+
+#[inline]
+fn wrap_range_from_middle(
+    start: PkgIdx,
+    end_offset: PkgIdxOffset,
+    middle: Option<PkgIdxOffset>,
+) -> core::iter::Chain<Range<usize>, Range<usize>> {
+    match middle {
+        Some(middle) => (start.index() + middle.offset()..start.index() + end_offset.offset())
+            .chain(start.range_to(middle)),
+        None => start.range_to(end_offset).chain(0..0),
     }
 }
 
@@ -119,7 +147,7 @@ pub struct PackageRelations<'a> {
 
 impl<'a> PackageRelations<'a> {
     pub fn new(matchspec_cache: &'a MatchspecCache<'a, 'a>) -> Self {
-        const CAPACITY: usize = 512 * 1024;
+        const CAPACITY: usize = 768 * 1024;
         PackageRelations {
             matchspec_cache,
             package_metadatas: Vec::with_capacity(CAPACITY),
@@ -176,7 +204,7 @@ impl<'a> PackageRelations<'a> {
 
     pub fn apply_build_prune(&mut self) -> Vec<RemovedBySupercedingBuildLog<'a>> {
         let mut result = Vec::new();
-        for (_, group) in &self.package_metadatas[..].iter().group_by(|pkg| {
+        for (_, packages) in &self.package_metadatas[..].iter().group_by(|pkg| {
             let r = &pkg.package_record;
             let buildnumstr = r.build_number.to_string();
             let mut build = r.build.clone();
@@ -185,16 +213,16 @@ impl<'a> PackageRelations<'a> {
             }
             (r.name.as_source(), &r.version, build)
         }) {
-            let group: Vec<&PackageMetadata> = group.into_iter().collect();
-            if group.len() < 2 {
+            let packages: Vec<&PackageMetadata> = packages.into_iter().collect();
+            if packages.len() < 2 {
                 continue;
             }
-            let big = group[group.len() - 1].package_record.build_number;
-            for pkg in &group[..group.len() - 2] {
+            let big = packages[packages.len() - 1].package_record.build_number;
+            for pkg in &packages[..packages.len() - 1] {
                 if pkg.package_record.build_number < big {
                     result.push(RemovedBySupercedingBuildLog {
-                        filename: group[0].filename,
-                        package_name: group[0].package_record.name.as_source(),
+                        filename: pkg.filename,
+                        package_name: packages[0].package_record.name.as_source(),
                         build_number: big,
                     });
                 }
@@ -206,10 +234,90 @@ impl<'a> PackageRelations<'a> {
         result
     }
 
+    pub fn apply_feature_removal(
+        &mut self,
+        features: HashSet<&str>,
+    ) -> Vec<RemovedWithFeatureLog<'a>> {
+        if features.len() == 0 {
+            let res = Vec::with_capacity(0);
+            return res;
+        }
+        let result: Vec<RemovedWithFeatureLog<'a>> = self
+            .package_metadatas
+            .par_iter()
+            .filter_map(|package| {
+                if let Some(feature) = package.package_record.features.as_ref() {
+                    if features.contains(feature.as_str()) {
+                        return Some(RemovedWithFeatureLog {
+                            filename: package.filename,
+                            package_name: package.package_record.name.as_source(),
+                            feature,
+                        });
+                    }
+                }
+                for feature in &package.package_record.track_features {
+                    if features.contains(feature.as_str()) {
+                        return Some(RemovedWithFeatureLog {
+                            filename: package.filename,
+                            package_name: package.package_record.name.as_source(),
+                            feature,
+                        });
+                    }
+                }
+                None
+            })
+            .collect();
+        for res in &result {
+            self.package_metadatas[self.filename_to_metadata[res.filename].index()].removed = true;
+        }
+        result
+    }
+
+    pub fn apply_dev_rc_ban(
+        &mut self,
+        ban_dev: bool,
+        ban_rc: bool,
+    ) -> Vec<RemovedByDevRcPolicyLog<'a>> {
+        if !(ban_dev || ban_rc) {
+            let result = Vec::with_capacity(0);
+            return result;
+        }
+        let result: Vec<RemovedByDevRcPolicyLog<'a>> = self
+            .package_metadatas
+            .par_iter()
+            .filter_map(|package| {
+                if package
+                    .package_record
+                    .version
+                    .segments()
+                    .flat_map(|segment| segment.components())
+                    .any(|component| {
+                        (ban_dev && component.is_dev())
+                            || (ban_rc
+                                && component
+                                    .as_string()
+                                    .is_some_and(|the_str| the_str.starts_with("rc")))
+                    })
+                {
+                    Some(RemovedByDevRcPolicyLog {
+                        filename: package.filename,
+                        package_name: package.package_record.name.as_source(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for res in &result {
+            self.package_metadatas[self.filename_to_metadata[res.filename].index()].removed = true;
+        }
+        result
+    }
+
     pub fn apply_matchspecs(
         &mut self,
         package_name: &str,
-        specs: &[MatchSpec],
+        specs: &[&MatchSpec],
     ) -> Vec<RemovedByUserLog<'a>> {
         let mut result = Vec::new();
         if let Some((start, offset)) = self.package_name_to_providers.get(package_name) {
@@ -236,6 +344,60 @@ impl<'a> PackageRelations<'a> {
                 }
             }
         }
+        result
+    }
+
+    pub fn apply_must_compatible(
+        &mut self,
+        package_name: &'a str,
+    ) -> Vec<RemovedBecauseIncompatibleLog<'a>> {
+        let mut result = Vec::new();
+        let mut relevant_packages = HashSet::new();
+        let mut relevant_matchspecs = HashMap::new();
+        let mut found_first = false;
+
+        for index in self.mkrange(package_name) {
+            if self.package_metadatas[index].removed == true {
+                continue;
+            }
+            if found_first == false {
+                for dependency in &self.package_metadatas[index].dependencies {
+                    let name = dependency.matchspec.name.as_ref().unwrap().as_source();
+                    relevant_packages.insert(name);
+                    let mut matchspecs = HashSet::new();
+                    matchspecs.insert(dependency.matchspec);
+                    relevant_matchspecs.insert(name, matchspecs);
+                }
+                found_first = true;
+            } else {
+                let mut local_relevant_packages = HashSet::new();
+                for dependency in &self.package_metadatas[index].dependencies {
+                    let name = dependency.matchspec.name.as_ref().unwrap().as_source();
+                    if let Some(specs) = relevant_matchspecs.get_mut(name) {
+                        specs.insert(dependency.matchspec);
+                        local_relevant_packages.insert(name);
+                    }
+                }
+                relevant_packages = &relevant_packages & &local_relevant_packages;
+                if relevant_packages.len() == 0 {
+                    break;
+                }
+            }
+        }
+
+        for package in relevant_packages {
+            let specs = relevant_matchspecs.remove(package).unwrap();
+            for item in
+                self.apply_matchspecs(package, &specs.into_iter().collect::<Vec<&MatchSpec>>())
+            {
+                result.push(RemovedBecauseIncompatibleLog {
+                    package_name: item.package_name,
+                    filename: item.filename,
+                    incompatible_with: package_name,
+                });
+            }
+        }
+
         result
     }
 
@@ -281,11 +443,22 @@ impl<'a> PackageRelations<'a> {
     }
 
     fn evaluate(&self, depending_on: &str, package_index: usize) -> Option<Evaluation<'a>> {
-        let (candidates_start, candidates_offset) = self.package_name_to_providers[depending_on];
         // Is this package already removed?
         if self.package_metadatas[package_index].removed {
             return None; // Yes, it is
         }
+        let (candidates_start, candidates_offset) = {
+            if let Some(result) = self.package_name_to_providers.get(depending_on) {
+                *result
+            } else {
+                (
+                    PkgIdx {
+                        index: self.package_metadatas.len() as u32,
+                    },
+                    PkgIdxOffset { offset: 0 },
+                )
+            }
+        };
         // Does this package depend on our search criteria?
         let depfind = &self.package_metadatas[package_index]
             .dependencies
@@ -306,10 +479,11 @@ impl<'a> PackageRelations<'a> {
         }
         let dependency_matchspec = dependency.matchspec;
         // Does the dependency have a solution?
-        let candidate_index = candidates_start.range_to(candidates_offset).find(|index| {
-            let md = &self.package_metadatas[*index];
-            !md.removed && dependency_matchspec.matches(md.package_record)
-        });
+        let candidate_index = wrap_range_from_middle(candidates_start, candidates_offset, last)
+            .find(|index| {
+                let md = &self.package_metadatas[*index];
+                !md.removed && dependency_matchspec.matches(md.package_record)
+            });
         if let Some(candidate_index) = candidate_index {
             // Yes, there is a solution. Save the solution in
             // case we need to return to this dependency later.
@@ -328,10 +502,12 @@ impl<'a> PackageRelations<'a> {
             // We already know what package previously satisified
             Some(candidate_offset) => Some(candidates_start.index() + candidate_offset.offset()),
             // We need to find the previous package that satisfied
-            None => candidates_start.range_to(candidates_offset).find(|index| {
-                let md = &self.package_metadatas[*index];
-                md.removed && dependency_matchspec.matches(md.package_record)
-            }),
+            None => {
+                wrap_range_from_middle(candidates_start, candidates_offset, last).find(|index| {
+                    let md = &self.package_metadatas[*index];
+                    md.removed && dependency_matchspec.matches(md.package_record)
+                })
+            }
         };
 
         let md = &self.package_metadatas[package_index];

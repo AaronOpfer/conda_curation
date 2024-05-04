@@ -3,11 +3,53 @@ use conda_curation::matchspecyaml::MatchspecYaml;
 use conda_curation::packagerelations::PackageRelations;
 use conda_curation::rawrepodata;
 use std::collections::HashSet;
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
+use clap::Parser;
+
+#[derive(Parser)]
+#[command(
+    author = "Aaron Opfer",
+    about = "Apply various filtering rules to remove packages from a Conda Channel in order to speed up downloads and solutions and/or enforce policy."
+)]
+struct Cli {
+    /// remove packages with this feature
+    #[arg(
+        short = 'F',
+        long = "ban-feature",
+        value_name = "FEATURE",
+        default_value = "pypy"
+    )]
+    ban_features: Vec<String>,
+    /// remove packages that aren't compatible with any providers of provided package
+    #[arg(
+        short = 'C',
+        long = "compatible-with",
+        value_name = "PACKAGE_NAME",
+        default_value = "python"
+    )]
+    must_compatible: Vec<String>,
+    /// don't remove development (dev) packages
+    #[arg(long = "keep-dev", action=clap::ArgAction::SetFalse)]
+    ban_dev: bool,
+    /// don't remove release candidate (rc) packages
+    #[arg(long = "keep-rc", action=clap::ArgAction::SetFalse)]
+    ban_rc: bool,
+    matchspecs_yaml: std::path::PathBuf,
+}
 
 fn main() {
-    let yaml_data = MatchspecYaml::from_file("matchspecs.yaml").unwrap();
+    let args = Cli::parse();
+
+    let banned_features: HashSet<&str> = args.ban_features.iter().map(String::as_str).collect();
+    let yaml_data = MatchspecYaml::from_file(&args.matchspecs_yaml.to_str().unwrap()).unwrap();
     let user_matchspecs = yaml_data.matchspecs().unwrap();
-    let matchspeccache = MatchspecCache::with_capacity(1024 * 128);
+    let matchspeccache = MatchspecCache::with_capacity(1024 * 192);
 
     let (rdna, rdl) = rayon::join(
         || {
@@ -36,11 +78,12 @@ fn main() {
     {
         let mut removal_count = 0;
         for (package_name, user_matchspecs) in &user_matchspecs {
-            for log_entry in relations.apply_matchspecs(package_name, &user_matchspecs[..]) {
+            next_round.insert(*package_name);
+            let spec_arg: Vec<&rattler_conda_types::MatchSpec> = user_matchspecs.iter().collect();
+            for log_entry in relations.apply_matchspecs(package_name, &spec_arg) {
                 if removed_filenames.insert(log_entry.filename) {
                     removal_count += 1;
                 }
-                next_round.insert(log_entry.package_name);
             }
         }
         println!("user matchspecs: - {removal_count:>7}");
@@ -55,6 +98,38 @@ fn main() {
         }
         println!("     old builds: - {removal_count:>7}");
     }
+    {
+        let mut removal_count = 0;
+        for log_entry in relations.apply_feature_removal(banned_features) {
+            if removed_filenames.insert(log_entry.filename) {
+                removal_count += 1;
+            }
+            next_round.insert(log_entry.package_name);
+        }
+        println!("       features: - {removal_count:>7}");
+    }
+
+    {
+        let mut removal_count = 0;
+        for log_entry in relations.apply_dev_rc_ban(args.ban_dev, args.ban_rc) {
+            if removed_filenames.insert(log_entry.filename) {
+                removal_count += 1;
+            }
+            next_round.insert(log_entry.package_name);
+        }
+        println!("       dev & rc: - {removal_count:>7}");
+    }
+
+    for package_name in &args.must_compatible {
+        let mut removal_count = 0;
+        for log_entry in relations.apply_must_compatible(package_name) {
+            if removed_filenames.insert(log_entry.filename) {
+                removal_count += 1;
+            }
+            next_round.insert(log_entry.package_name);
+        }
+        println!("  compat {package_name}: - {removal_count:>7}")
+    }
 
     {
         let mut round = 0;
@@ -67,10 +142,8 @@ fn main() {
             let mut round_logs = relations.find_unresolveables(this_round.into_iter().collect());
             removal_count += round_logs.len();
             for log_entry in &round_logs {
-                if let Some(_cause_filename) = log_entry.cause_filename {
-                    if removed_filenames.insert(log_entry.filename) {
-                        removal_count += 1;
-                    }
+                if removed_filenames.insert(log_entry.filename) {
+                    removal_count += 1;
                 }
                 next_round.insert(log_entry.package_name);
             }
@@ -83,7 +156,7 @@ fn main() {
     }
     let total_removed_count = removed_filenames.len();
     let remaining_count = package_count - total_removed_count;
-    let percent: f64 = f64::from(remaining_count as u32) / f64::from(package_count as u32);
+    let percent = remaining_count as f32 / package_count as f32;
     let percent = (percent * 100.0).ceil();
     println!("=============================================");
     println!("      Remaining:   {remaining_count:>7} ({percent}% of original)");
