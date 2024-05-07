@@ -30,7 +30,7 @@ There are significant feature limitations of this software, as it is currently t
 
 Only one architecture + `noarch` can be filtered, and it is presently hardcoded to `linux-64`.
 
-HTTP/HTTPS interactions to retrieve repodata are missing from the tool itself. Instead, it will perform filtering on a `linux64_repodata.json` and a `noarch_repodata.json` that are in the same local directory. There is a helper script `./update_repodata.sh` which will download these files.
+HTTP/HTTPS interactions to retrieve repodata are missing from the tool itself. Instead, it will perform filtering on a `linux64_repodata.json` and a `noarch_repodata.json` that are in the same local directory. There is a helper script `./update_repodata.bash` which will download these files.
 
 ## History
 

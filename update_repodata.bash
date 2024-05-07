@@ -1,4 +1,4 @@
-
+#!/bin/bash
 curl \
 	--compressed \
 	$(test -e noarch_repodata.json && echo '-z noarch_repodata.json') \
