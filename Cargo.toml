@@ -11,6 +11,9 @@ categories = ["conda"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.dev]
+opt-level = 1
+
 [lints.clippy]
 pedantic = "warn"
 missing-errors-doc = "allow"
