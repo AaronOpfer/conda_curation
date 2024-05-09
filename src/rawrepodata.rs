@@ -1,6 +1,12 @@
+use rattler::default_cache_dir;
 use rattler_conda_types::PackageRecord;
+use rattler_repodata_gateway::fetch;
+use reqwest::Client;
+use reqwest_middleware::ClientWithMiddleware;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::PathBuf;
+use url::Url;
 
 #[derive(Deserialize)]
 pub struct RawRepoData {
@@ -9,8 +15,31 @@ pub struct RawRepoData {
     pub packages_conda: indexmap::IndexMap<String, PackageRecord>,
 }
 
+pub async fn fetch_repodata(
+    channel_alias: &str,
+) -> Result<(PathBuf, PathBuf), Box<dyn std::error::Error>> {
+    let lin64_url = Url::parse(&(channel_alias.to_string() + "linux-64/"))?;
+    let noarch_url = Url::parse(&(channel_alias.to_string() + "noarch/"))?;
+    let client = ClientWithMiddleware::from(Client::new());
+    let cache = default_cache_dir()?;
+    let opts = fetch::FetchRepoDataOptions {
+        ..Default::default()
+    };
+    let linresult = fetch::fetch_repo_data(lin64_url, client, cache, opts, None).await?;
+    let client = ClientWithMiddleware::from(Client::new());
+    let cache = default_cache_dir()?;
+    let opts = fetch::FetchRepoDataOptions {
+        ..Default::default()
+    };
+    let noarchresult = fetch::fetch_repo_data(noarch_url, client, cache, opts, None).await?;
+    Ok((
+        linresult.repo_data_json_path,
+        noarchresult.repo_data_json_path,
+    ))
+}
+
 impl RawRepoData {
-    pub fn from_file(filename: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_file(filename: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(serde_json::from_str(&fs::read_to_string(filename)?)?)
     }
 

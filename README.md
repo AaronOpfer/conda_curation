@@ -30,8 +30,6 @@ There are significant feature limitations of this software, as it is currently t
 
 Only one architecture + `noarch` can be filtered, and it is presently hardcoded to `linux-64`.
 
-HTTP/HTTPS interactions to retrieve repodata are missing from the tool itself. Instead, it will perform filtering on a `linux64_repodata.json` and a `noarch_repodata.json` that are in the same local directory. There is a helper script `./update_repodata.bash` which will download these files.
-
 ## History
 
 The original prototype of this tool was developed by myself (@AaronOpfer) at [Chicago Trading Company](https://www.chicagotrading.com/), based on observations from my colleague Bozhao Jiang that hand-crafted "curated" channels caused conda builds to finish several minutes faster than they were previously. The original version was written in Python and, due to its performance issues, reached a hard limit on feature development as the development cycle time lengthened. I rewrote the project in Rust in my free time to create this version, and have received permission to release it to the community under the MIT License.

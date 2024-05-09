@@ -40,10 +40,17 @@ struct Cli {
     /// don't remove release candidate (rc) packages
     #[arg(long = "keep-rc", action=clap::ArgAction::SetFalse)]
     ban_rc: bool,
+    /// Base URL for downloading repodata
+    #[arg(
+        long = "channel-alias",
+        default_value = "https://conda.anaconda.org/conda-forge/"
+    )]
+    channel_alias: String,
     matchspecs_yaml: std::path::PathBuf,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Cli::parse();
 
     let banned_features: HashSet<&str> = args.ban_features.iter().map(String::as_str).collect();
@@ -51,13 +58,18 @@ fn main() {
     let user_matchspecs = yaml_data.matchspecs().unwrap();
     let matchspeccache = MatchspecCache::with_capacity(1024 * 192);
 
+    let (noarch_repodata_fn, linux64_repodata_fn) =
+        rawrepodata::fetch_repodata(&args.channel_alias)
+            .await
+            .expect("Failed to download repodata");
+
     let (rdna, rdl) = rayon::join(
         || {
-            rawrepodata::RawRepoData::from_file("noarch_repodata.json")
+            rawrepodata::RawRepoData::from_file(&noarch_repodata_fn)
                 .expect("failed to load test data")
         },
         || {
-            rawrepodata::RawRepoData::from_file("linux64_repodata.json")
+            rawrepodata::RawRepoData::from_file(&linux64_repodata_fn)
                 .expect("failed to load test data")
         },
     );
