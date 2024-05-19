@@ -46,6 +46,9 @@ struct Cli {
         default_value = "https://conda.anaconda.org/conda-forge/"
     )]
     channel_alias: String,
+    /// Emit the reasons why packages are being removed.
+    #[arg(short = 'e', long = "explain")]
+    explain: bool,
     matchspecs_yaml: std::path::PathBuf,
 }
 
@@ -95,6 +98,9 @@ async fn main() {
             for log_entry in relations.apply_matchspecs(package_name, &spec_arg) {
                 if removed_filenames.insert(log_entry.filename) {
                     removal_count += 1;
+                    if args.explain {
+                        println!("{}", log_entry);
+                    }
                 }
             }
         }
@@ -105,6 +111,9 @@ async fn main() {
         for log_entry in relations.apply_build_prune() {
             if removed_filenames.insert(log_entry.filename) {
                 removal_count += 1;
+                if args.explain {
+                    println!("{}", log_entry);
+                }
             }
             next_round.insert(log_entry.package_name);
         }
@@ -115,6 +124,9 @@ async fn main() {
         for log_entry in relations.apply_feature_removal(banned_features) {
             if removed_filenames.insert(log_entry.filename) {
                 removal_count += 1;
+                if args.explain {
+                    println!("{}", log_entry);
+                }
             }
             next_round.insert(log_entry.package_name);
         }
@@ -126,6 +138,9 @@ async fn main() {
         for log_entry in relations.apply_dev_rc_ban(args.ban_dev, args.ban_rc) {
             if removed_filenames.insert(log_entry.filename) {
                 removal_count += 1;
+                if args.explain {
+                    println!("{}", log_entry);
+                }
             }
             next_round.insert(log_entry.package_name);
         }
@@ -137,6 +152,9 @@ async fn main() {
         for log_entry in relations.apply_must_compatible(package_name) {
             if removed_filenames.insert(log_entry.filename) {
                 removal_count += 1;
+                if args.explain {
+                    println!("{}", log_entry);
+                }
             }
             next_round.insert(log_entry.package_name);
         }
@@ -156,6 +174,9 @@ async fn main() {
             for log_entry in &round_logs {
                 if removed_filenames.insert(log_entry.filename) {
                     removal_count += 1;
+                    if args.explain {
+                        println!("{}", log_entry);
+                    }
                 }
                 next_round.insert(log_entry.package_name);
             }
