@@ -48,19 +48,49 @@ pub struct RemovedByUserLog<'a> {
     pub package_name: &'a str,
 }
 
+impl<'a> std::fmt::Display for RemovedByUserLog<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} removed: failed user matchspec", self.filename)
+    }
+}
+
 pub struct RemovedBySupercedingBuildLog<'a> {
     pub filename: &'a str,
     pub package_name: &'a str,
     pub build_number: BuildNumber,
 }
 
+impl<'a> std::fmt::Display for RemovedBySupercedingBuildLog<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} removed: superceded by build {}",
+            self.filename, self.build_number
+        )
+    }
+}
+
 pub struct RemovedByDevRcPolicyLog<'a> {
     pub filename: &'a str,
     pub package_name: &'a str,
+}
+impl<'a> std::fmt::Display for RemovedByDevRcPolicyLog<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} removed: dev/rc policy", self.filename)
+    }
 }
 
 pub struct RemovedWithFeatureLog<'a> {
     pub filename: &'a str,
     pub package_name: &'a str,
     pub feature: &'a str,
+}
+impl<'a> std::fmt::Display for RemovedWithFeatureLog<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} removed: has banned feature {}",
+            self.filename, self.feature
+        )
+    }
 }
