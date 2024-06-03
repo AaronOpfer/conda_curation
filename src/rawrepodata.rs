@@ -15,9 +15,14 @@ pub struct RawRepoData {
     pub packages_conda: indexmap::IndexMap<String, PackageRecord>,
 }
 
+pub struct RepodataFilenames {
+    pub linux64: PathBuf,
+    pub noarch: PathBuf,
+}
+
 pub async fn fetch_repodata(
     channel_alias: &str,
-) -> Result<(PathBuf, PathBuf), Box<dyn std::error::Error>> {
+) -> Result<RepodataFilenames, Box<dyn std::error::Error>> {
     let lin64_url = Url::parse(&(channel_alias.to_string() + "linux-64/"))?;
     let noarch_url = Url::parse(&(channel_alias.to_string() + "noarch/"))?;
     let client = ClientWithMiddleware::from(Client::new());
@@ -32,10 +37,10 @@ pub async fn fetch_repodata(
         ..Default::default()
     };
     let noarchresult = fetch::fetch_repo_data(noarch_url, client, cache, opts, None).await?;
-    Ok((
-        linresult.repo_data_json_path,
-        noarchresult.repo_data_json_path,
-    ))
+    Ok(RepodataFilenames {
+        linux64: linresult.repo_data_json_path,
+        noarch: noarchresult.repo_data_json_path,
+    })
 }
 
 impl RawRepoData {

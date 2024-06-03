@@ -61,10 +61,12 @@ async fn main() {
     let user_matchspecs = yaml_data.matchspecs().unwrap();
     let matchspeccache = MatchspecCache::with_capacity(1024 * 192);
 
-    let (noarch_repodata_fn, linux64_repodata_fn) =
-        rawrepodata::fetch_repodata(&args.channel_alias)
-            .await
-            .expect("Failed to download repodata");
+    let rawrepodata::RepodataFilenames {
+        noarch: noarch_repodata_fn,
+        linux64: linux64_repodata_fn,
+    } = rawrepodata::fetch_repodata(&args.channel_alias)
+        .await
+        .expect("Failed to download repodata");
 
     let (rdna, rdl) = rayon::join(
         || {
