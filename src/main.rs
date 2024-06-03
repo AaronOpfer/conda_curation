@@ -2,6 +2,8 @@ use conda_curation::matchspeccache::MatchspecCache;
 use conda_curation::matchspecyaml::MatchspecYaml;
 use conda_curation::packagerelations::PackageRelations;
 use conda_curation::rawrepodata;
+use conda_curation::rawrepodata::filtered_repodata_to_file;
+use rattler_conda_types::RepoData;
 use std::collections::HashSet;
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
@@ -68,21 +70,17 @@ async fn main() {
         .await
         .expect("Failed to download repodata");
 
-    let (rdna, rdl) = rayon::join(
-        || {
-            rawrepodata::RawRepoData::from_file(&noarch_repodata_fn)
-                .expect("failed to load test data")
-        },
-        || {
-            rawrepodata::RawRepoData::from_file(&linux64_repodata_fn)
-                .expect("failed to load test data")
-        },
+    let (repodata_noarch, repodata_linux) = rayon::join(
+        || RepoData::from_path(&noarch_repodata_fn).expect("failed to load test data"),
+        || RepoData::from_path(&linux64_repodata_fn).expect("failed to load test data"),
     );
     let mut relations = PackageRelations::new(&matchspeccache);
 
     let package_count = {
         let mut i = 0;
-        for (package_filename, package_record) in rawrepodata::sorted_iter(&[&rdl, &rdna]) {
+        for (package_filename, package_record) in
+            rawrepodata::sorted_iter(&[&repodata_linux, &repodata_noarch])
+        {
             relations.insert(package_filename, package_record);
             i += 1;
         }
@@ -198,15 +196,23 @@ async fn main() {
 
     rayon::join(
         || {
-            rdl.to_file("linux-64/repodata.json", |pkfn| {
-                !removed_filenames.contains(pkfn)
-            })
+            filtered_repodata_to_file(
+                &repodata_linux,
+                "linux-64/repodata.json",
+                |pkfn| !removed_filenames.contains(pkfn),
+                "linux-64",
+                &args.channel_alias,
+            )
             .expect("failed to write linux repodata");
         },
         || {
-            rdna.to_file("noarch/repodata.json", |pkfn| {
-                !removed_filenames.contains(pkfn)
-            })
+            filtered_repodata_to_file(
+                &repodata_noarch,
+                "noarch/repodata.json",
+                |pkfn| !removed_filenames.contains(pkfn),
+                "noarch",
+                &args.channel_alias,
+            )
             .expect("failed to write noarch repodata");
         },
     );

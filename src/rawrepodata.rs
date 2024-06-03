@@ -1,19 +1,11 @@
 use rattler::default_cache_dir;
-use rattler_conda_types::PackageRecord;
+use rattler_conda_types::{ChannelInfo, PackageRecord, RepoData};
 use rattler_repodata_gateway::fetch;
 use reqwest::Client;
 use reqwest_middleware::ClientWithMiddleware;
-use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use url::Url;
-
-#[derive(Deserialize)]
-pub struct RawRepoData {
-    pub packages: indexmap::IndexMap<String, PackageRecord>,
-    #[serde(rename = "packages.conda")]
-    pub packages_conda: indexmap::IndexMap<String, PackageRecord>,
-}
 
 pub struct RepodataFilenames {
     pub linux64: PathBuf,
@@ -43,54 +35,48 @@ pub async fn fetch_repodata(
     })
 }
 
-impl RawRepoData {
-    pub fn from_file(filename: &PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(serde_json::from_str(&fs::read_to_string(filename)?)?)
+pub fn filtered_repodata_to_file(
+    initial: &RepoData,
+    filename: &str,
+    predicate: impl Fn(&str) -> bool,
+    subdir: &str,
+    possible_replacement_base_url: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut out = initial.clone();
+    out.packages
+        .retain(|package_filename, _| predicate(package_filename));
+    out.conda_packages
+        .retain(|package_filename, _| predicate(package_filename));
+    if out.base_url() == None {
+        match out.info {
+            None => {
+                out.info = Some(ChannelInfo {
+                    subdir: subdir.to_string(),
+                    base_url: Some(possible_replacement_base_url.to_string()),
+                })
+            }
+            Some(ref mut info) => info.base_url = Some(possible_replacement_base_url.to_string()),
+        }
     }
 
-    pub fn to_file(
-        &self,
-        filename: &str,
-        predicate: impl Fn(&str) -> bool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        #[derive(Serialize)]
-        struct SerializeTemp<'a> {
-            pub packages: indexmap::IndexMap<&'a str, &'a PackageRecord>,
-            #[serde(rename = "packages.conda")]
-            pub packages_conda: indexmap::IndexMap<&'a str, &'a PackageRecord>,
-        }
-
-        let mut out: SerializeTemp = SerializeTemp {
-            packages: indexmap::IndexMap::new(),
-            packages_conda: indexmap::IndexMap::new(),
-        };
-        for (pkfn, record) in &self.packages {
-            if predicate(pkfn) {
-                out.packages.insert(pkfn, record);
-            }
-        }
-        for (pkfn, record) in &self.packages_conda {
-            if predicate(pkfn) {
-                out.packages_conda.insert(pkfn, record);
-            }
-        }
-
-        {
-            let repodata = serde_json::to_string(&out)?;
-            fs::write(filename, repodata)?;
-        }
-
-        Ok(())
+    {
+        let repodata = serde_json::to_string(&out)?;
+        fs::write(filename, repodata)?;
     }
+
+    Ok(())
 }
 
-type IterItem<'a> = (&'a String, &'a PackageRecord);
-
-pub fn sorted_iter<'a>(repodatas: &[&'a RawRepoData]) -> impl Iterator<Item = IterItem<'a>> {
-    let mut arg = Vec::with_capacity(repodatas.len() * 2);
-    for repodata in repodatas {
-        arg.push(repodata.packages.iter());
-        arg.push(repodata.packages_conda.iter());
-    }
-    itertools::kmerge(arg)
+pub fn sorted_iter<'a>(repodatas: &[&'a RepoData]) -> Vec<(&'a String, &'a PackageRecord)> {
+    let mut everything: Vec<(&'a String, &'a PackageRecord)> = repodatas
+        .iter()
+        .flat_map(|repodata| {
+            repodata
+                .packages
+                .iter()
+                .chain(repodata.conda_packages.iter())
+        })
+        .collect();
+    everything.sort();
+    everything
 }
