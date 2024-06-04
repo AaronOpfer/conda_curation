@@ -397,6 +397,15 @@ impl<'a> PackageRelations<'a> {
         if self.package_metadatas[package_index].removed {
             return None; // Yes, it is
         }
+        // Does this package depend on our search criteria?
+        let depfind = &self.package_metadatas[package_index]
+            .dependencies
+            .iter()
+            .enumerate()
+            .find(|(_, d)| d.matchspec.name.as_ref().unwrap().as_source() == depending_on);
+        if depfind.is_none() {
+            return None; // No, it does not.
+        }
         let (candidates_start, candidates_offset) = {
             if let Some(result) = self.package_name_to_providers.get(depending_on) {
                 *result
@@ -409,15 +418,6 @@ impl<'a> PackageRelations<'a> {
                 )
             }
         };
-        // Does this package depend on our search criteria?
-        let depfind = &self.package_metadatas[package_index]
-            .dependencies
-            .iter()
-            .enumerate()
-            .find(|(_, d)| d.matchspec.name.as_ref().unwrap().as_source() == depending_on);
-        if depfind.is_none() {
-            return None; // No, it does not.
-        }
         // Does this dependency have the same solution as before?
         let (dependency_index, dependency) = depfind.unwrap();
         let last = dependency.last_successful_resolution;
