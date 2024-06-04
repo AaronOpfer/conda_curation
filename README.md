@@ -4,12 +4,20 @@
 
 ## Features
 
+### Filtering
+
 * Remove packages that do not match any of the user-provided matchspecs for that package (for an example, see `matchspecs/secure_python.yaml`)
 * Remove packages that have been superceded by new builds (i.e. `python-3.9.18-h12345678_0` is superceded by `python-3.9.18-h12345678_1`, and so the former package is removed)
 * Remove `dev` and `rc` packages (i.e. `2.0.0.dev0` or `2.0.0.rc0`).
 * Remove packages that track undesired features (i.e. `pypy`, etc)
 * Remove packages that are incompatible with any available candidates of another package chosen by the user (i.e. `python`) (presently not recursively)
 * After applying any/all of the above filters, perform follow-up analysis to find packages which depended on now-removed dependencies, and remove those as well, and apply this recursively. For example, filtering out Python 2.7 will also filter out all builds of numpy that were compiled against Python 2.7.
+
+### Standards
+
+* Supports [CEP-15](https://github.com/conda/ceps/blob/main/cep-15.md) `base_url`: if the source respository (as specified by the `--channel-alias` flag) does not already have a `info.base_url` set, then the output `repodata.json` will have its `info.base_url` set to the `--channel-alias`. If it was set in the original `repodata.json`, then it will be preserved.
+
+  If all clients support CEP-15, then this obviates the need for a proxy server configured to 30x redirect all package requests to the `--channel-alias` destination.
 
 ## Applications
 
