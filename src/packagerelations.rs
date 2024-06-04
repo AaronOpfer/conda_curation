@@ -57,11 +57,10 @@ fn wrap_range_from_middle(
     start: PkgIdx,
     end_offset: PkgIdxOffset,
     middle: Option<PkgIdxOffset>,
-) -> core::iter::Chain<Range<usize>, Range<usize>> {
+) -> Range<usize> {
     match middle {
-        Some(middle) => (start.index() + middle.offset()..start.index() + end_offset.offset())
-            .chain(start.range_to(middle)),
-        None => start.range_to(end_offset).chain(0..0),
+        Some(middle) => start.index() + middle.offset()..start.index() + end_offset.offset(),
+        None => start.range_to(end_offset),
     }
 }
 
@@ -406,7 +405,7 @@ impl<'a> PackageRelations<'a> {
         if depfind.is_none() {
             return None; // No, it does not.
         }
-        let (candidates_start, candidates_offset) = {
+        let (candidates_start, candidates_end_offset) = {
             if let Some(result) = self.package_name_to_providers.get(depending_on) {
                 *result
             } else {
@@ -420,21 +419,25 @@ impl<'a> PackageRelations<'a> {
         };
         // Does this dependency have the same solution as before?
         let (dependency_index, dependency) = depfind.unwrap();
-        let last = dependency.last_successful_resolution;
-        if let Some(offset) = last {
-            let candidate_index = candidates_start.index() + offset.offset();
-            if !self.package_metadatas[candidate_index].removed {
+        let last_successful_resolution = dependency.last_successful_resolution;
+        if let Some(offset) = last_successful_resolution {
+            let last_solution_index = candidates_start.index() + offset.offset();
+            if !self.package_metadatas[last_solution_index].removed {
                 return None; // Yes, it does.
             }
         }
         let dependency_matchspec = dependency.matchspec;
         // Does the dependency have a solution?
-        let candidate_index = wrap_range_from_middle(candidates_start, candidates_offset, last)
-            .find(|index| {
-                let md = &self.package_metadatas[*index];
-                !md.removed && dependency_matchspec.matches(md.package_record)
-            });
-        if let Some(candidate_index) = candidate_index {
+        let new_solution_index = wrap_range_from_middle(
+            candidates_start,
+            candidates_end_offset,
+            last_successful_resolution,
+        )
+        .find(|index| {
+            let md = &self.package_metadatas[*index];
+            !md.removed && dependency_matchspec.matches(md.package_record)
+        });
+        if let Some(new_solution_index) = new_solution_index {
             // Yes, there is a solution. Save the solution in
             // case we need to return to this dependency later.
             return Some(Evaluation::UpdateSolution((
@@ -442,22 +445,22 @@ impl<'a> PackageRelations<'a> {
                     index: u32::try_from(package_index).unwrap(),
                 },
                 dependency_index,
-                PkgIdxOffset::from_difference(candidates_start, candidate_index),
+                PkgIdxOffset::from_difference(candidates_start, new_solution_index),
             )));
         }
 
         // There is no solution.
         // Try to determine the reason for unresolveable.
-        let candidate_index = match last {
+        let cause_of_removal_index = match last_successful_resolution {
             // We already know what package previously satisified
-            Some(candidate_offset) => Some(candidates_start.index() + candidate_offset.offset()),
+            Some(offset) => Some(candidates_start.index() + offset.offset()),
             // We need to find the previous package that satisfied
-            None => {
-                wrap_range_from_middle(candidates_start, candidates_offset, last).find(|index| {
+            None => wrap_range_from_middle(candidates_start, candidates_end_offset, None).find(
+                |index| {
                     let md = &self.package_metadatas[*index];
                     md.removed && dependency_matchspec.matches(md.package_record)
-                })
-            }
+                },
+            ),
         };
 
         let md = &self.package_metadatas[package_index];
@@ -469,7 +472,8 @@ impl<'a> PackageRelations<'a> {
                 filename: md.filename,
                 package_name: md.package_record.name.as_source(),
                 matchspec: dependency_matchspec,
-                cause_filename: candidate_index.map(|index| self.package_metadatas[index].filename),
+                cause_filename: cause_of_removal_index
+                    .map(|index| self.package_metadatas[index].filename),
             },
         )));
     }
