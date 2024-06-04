@@ -5,6 +5,7 @@ use conda_curation::rawrepodata;
 use conda_curation::rawrepodata::filtered_repodata_to_file;
 use rattler_conda_types::RepoData;
 use std::collections::HashSet;
+use std::time::Instant;
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
 
@@ -91,6 +92,7 @@ async fn main() {
     let mut removed_filenames = HashSet::new();
     let mut next_round = HashSet::new();
     {
+        let start = Instant::now();
         let mut removal_count = 0;
         for (package_name, user_matchspecs) in &user_matchspecs {
             next_round.insert(*package_name);
@@ -104,9 +106,11 @@ async fn main() {
                 }
             }
         }
-        println!("user matchspecs: - {removal_count:>7}");
+        let duration = start.elapsed().as_secs_f64();
+        println!("user matchspecs: - {removal_count:>7} ({duration:>2.7}s)");
     }
     {
+        let start = Instant::now();
         let mut removal_count = 0;
         for log_entry in relations.apply_build_prune() {
             if removed_filenames.insert(log_entry.filename) {
@@ -117,9 +121,11 @@ async fn main() {
             }
             next_round.insert(log_entry.package_name);
         }
-        println!("     old builds: - {removal_count:>7}");
+        let duration = start.elapsed().as_secs_f64();
+        println!("     old builds: - {removal_count:>7} ({duration:>2.7}s)");
     }
     {
+        let start = Instant::now();
         let mut removal_count = 0;
         for log_entry in relations.apply_feature_removal(banned_features) {
             if removed_filenames.insert(log_entry.filename) {
@@ -130,10 +136,12 @@ async fn main() {
             }
             next_round.insert(log_entry.package_name);
         }
-        println!("       features: - {removal_count:>7}");
+        let duration = start.elapsed().as_secs_f64();
+        println!("       features: - {removal_count:>7} ({duration:>2.7}s)");
     }
 
     {
+        let start = Instant::now();
         let mut removal_count = 0;
         for log_entry in relations.apply_dev_rc_ban(args.ban_dev, args.ban_rc) {
             if removed_filenames.insert(log_entry.filename) {
@@ -144,10 +152,12 @@ async fn main() {
             }
             next_round.insert(log_entry.package_name);
         }
-        println!("       dev & rc: - {removal_count:>7}");
+        let duration = start.elapsed().as_secs_f64();
+        println!("       dev & rc: - {removal_count:>7} ({duration:>2.7}s)");
     }
 
     for package_name in &args.must_compatible {
+        let start = Instant::now();
         let mut removal_count = 0;
         for log_entry in relations.apply_must_compatible(package_name) {
             if removed_filenames.insert(log_entry.filename) {
@@ -158,12 +168,14 @@ async fn main() {
             }
             next_round.insert(log_entry.package_name);
         }
-        println!("  compat {package_name}: - {removal_count:>7}")
+        let duration = start.elapsed().as_secs_f64();
+        println!("  compat {package_name}: - {removal_count:>7} ({duration:>2.7}s)")
     }
 
     {
         let mut round = 0;
         while !next_round.is_empty() {
+            let start = Instant::now();
             round += 1;
             let mut removal_count = 0;
             let this_round = next_round.clone();
@@ -184,7 +196,8 @@ async fn main() {
             if next_round.is_empty() {
                 break;
             }
-            println!(" No Sln Round {round}: - {removal_count:>7}");
+            let duration = start.elapsed().as_secs_f64();
+            println!(" No Sln Round {round}: - {removal_count:>7} ({duration:>2.7}s)");
         }
     }
     let total_removed_count = removed_filenames.len();

@@ -163,7 +163,7 @@ impl<'a> PackageRelations<'a> {
             }
             (r.name.as_source(), &r.version, build)
         }) {
-            let packages: Vec<&PackageMetadata> = packages.into_iter().collect();
+            let packages: Vec<&PackageMetadata> = packages.collect();
             if packages.len() < 2 {
                 continue;
             }
