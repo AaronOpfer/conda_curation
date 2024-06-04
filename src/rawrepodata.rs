@@ -77,6 +77,6 @@ pub fn sorted_iter<'a>(repodatas: &[&'a RepoData]) -> Vec<(&'a String, &'a Packa
                 .chain(repodata.conda_packages.iter())
         })
         .collect();
-    everything.sort();
+    everything.sort_by_key(|i| i.0);
     everything
 }
