@@ -2,7 +2,7 @@
 name = "conda_curation"
 version = "0.2.0"
 edition = "2021"
-rust-version = "1.77.0"
+rust-version = "1.78.0"
 license = "MIT"
 description = "Reduce conda repodata to enforce policy and speed up solves. Alpha software."
 repository = "https://github.com/AaronOpfer/conda_curation"
@@ -27,7 +27,7 @@ missing-panics-doc = "allow"
 clap = { version = "4.5.4", features = ["derive"] }
 fxhash = "0.2.1"
 indexmap = { version = "2.1.0", features = ["serde", "rayon"] }
-itertools = "0.12.0"
+itertools = "0.13.0"
 lazy_static = "1.4.0"
 rattler = "0.26.2"
 rattler_conda_types = "0.24.0"

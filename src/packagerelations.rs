@@ -154,12 +154,12 @@ impl<'a> PackageRelations<'a> {
 
     pub fn apply_build_prune(&mut self) -> Vec<RemovedBySupercedingBuildLog<'a>> {
         let mut result = Vec::new();
-        for (_, packages) in &self.package_metadatas[..].iter().group_by(|pkg| {
+        for (_, packages) in &self.package_metadatas[..].iter().chunk_by(|pkg| {
             let r = &pkg.package_record;
             let buildnumstr = r.build_number.to_string();
-            let mut build = r.build.clone();
+            let mut build: &str = &r.build;
             if build.ends_with(&buildnumstr) {
-                build.truncate(build.len() - buildnumstr.len());
+                build = &build[0..(build.len() - buildnumstr.len())];
             }
             (r.name.as_source(), &r.version, build)
         }) {
