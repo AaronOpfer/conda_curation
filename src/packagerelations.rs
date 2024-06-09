@@ -428,7 +428,6 @@ impl<'a> PackageRelations<'a> {
                 return None; // Yes, it does.
             }
         }
-        let dependency_matchspec = dependency.matchspec;
         // Does the dependency have a solution?
         let new_solution_index = wrap_range_from_middle(
             candidates_start,
@@ -437,7 +436,7 @@ impl<'a> PackageRelations<'a> {
         )
         .find(|index| {
             let md = &self.package_metadatas[*index];
-            !md.removed && dependency_matchspec.matches(md.package_record)
+            !md.removed && dependency.matchspec.matches(md.package_record)
         });
         if let Some(new_solution_index) = new_solution_index {
             // Yes, there is a solution. Save the solution in
@@ -460,7 +459,7 @@ impl<'a> PackageRelations<'a> {
             None => wrap_range_from_middle(candidates_start, candidates_end_offset, None).find(
                 |index| {
                     let md = &self.package_metadatas[*index];
-                    md.removed && dependency_matchspec.matches(md.package_record)
+                    md.removed && dependency.matchspec.matches(md.package_record)
                 },
             ),
         };
@@ -473,7 +472,8 @@ impl<'a> PackageRelations<'a> {
             RemovedUnsatisfiableLog {
                 filename: md.filename,
                 package_name: md.package_record.name.as_source(),
-                matchspec: dependency_matchspec,
+                dependency_package_name: dependency.name,
+                matchspec: dependency.matchspec,
                 cause_filename: cause_of_removal_index
                     .map(|index| self.package_metadatas[index].filename),
             },

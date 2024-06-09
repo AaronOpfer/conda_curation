@@ -6,6 +6,7 @@ use rattler_conda_types::{BuildNumber, NamelessMatchSpec};
 pub struct RemovedUnsatisfiableLog<'a> {
     pub filename: &'a str,
     pub package_name: &'a str,
+    pub dependency_package_name: &'a str,
     pub matchspec: &'a NamelessMatchSpec,
     pub cause_filename: Option<&'a str>,
 }
@@ -15,13 +16,13 @@ impl<'a> std::fmt::Display for RemovedUnsatisfiableLog<'a> {
         match self.cause_filename {
             Some(cause_filename) => write!(
                 f,
-                "{} removed: dependency {} unsatisfiable after removal of {}",
-                self.filename, self.matchspec, cause_filename
+                "{} removed: dependency {} {} unsatisfiable after removal of {}",
+                self.filename, self.dependency_package_name, self.matchspec, cause_filename
             ),
             None => write!(
                 f,
-                "{} removed: dependency {} unsatisfiable",
-                self.filename, self.matchspec
+                "{} removed: dependency {} {} unsatisfiable",
+                self.filename, self.dependency_package_name, self.matchspec
             ),
         }
     }
