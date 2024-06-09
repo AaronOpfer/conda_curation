@@ -96,7 +96,8 @@ async fn main() {
         let mut removal_count = 0;
         for (package_name, user_matchspecs) in &user_matchspecs {
             next_round.insert(*package_name);
-            let spec_arg: Vec<&rattler_conda_types::MatchSpec> = user_matchspecs.iter().collect();
+            let spec_arg: Vec<&rattler_conda_types::NamelessMatchSpec> =
+                user_matchspecs.iter().collect();
             for log_entry in relations.apply_matchspecs(package_name, &spec_arg) {
                 if removed_filenames.insert(log_entry.filename) {
                     removal_count += 1;

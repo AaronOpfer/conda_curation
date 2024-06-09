@@ -1,4 +1,4 @@
-use rattler_conda_types::{BuildNumber, MatchSpec};
+use rattler_conda_types::{BuildNumber, NamelessMatchSpec};
 
 /// Log item for when a package is removed because of a dependency no longer being satsifiable.
 /// Includes the filename of a package that was removed which would have satisfied the test if it
@@ -6,7 +6,7 @@ use rattler_conda_types::{BuildNumber, MatchSpec};
 pub struct RemovedUnsatisfiableLog<'a> {
     pub filename: &'a str,
     pub package_name: &'a str,
-    pub matchspec: &'a MatchSpec,
+    pub matchspec: &'a NamelessMatchSpec,
     pub cause_filename: Option<&'a str>,
 }
 

@@ -1,4 +1,4 @@
-use rattler_conda_types::MatchSpec;
+use rattler_conda_types::NamelessMatchSpec;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::str::FromStr;
@@ -35,16 +35,17 @@ where
         }
         {
             // Read-and-Probably-Write Path
-            self.lookup
-                .write()
-                .unwrap()
-                .entry(key)
-                .or_insert_with(|| self.arena.alloc(T::from_str(key).expect("Malformed input")))
+            self.lookup.write().unwrap().entry(key).or_insert_with(|| {
+                self.arena.alloc(
+                    T::from_str(key)
+                        .unwrap_or_else(|err| panic!("Malformed input: {key:?} {err:?}")),
+                )
+            })
         }
     }
 }
 
-pub type MatchspecCache<'a, 'b> = Cache<'a, 'b, MatchSpec>;
+pub type MatchspecCache<'a, 'b> = Cache<'a, 'b, NamelessMatchSpec>;
 
 #[cfg(test)]
 mod tests {

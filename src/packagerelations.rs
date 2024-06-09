@@ -4,7 +4,7 @@ use crate::logs::{
 };
 use crate::matchspeccache::MatchspecCache;
 use itertools::Itertools;
-use rattler_conda_types::{MatchSpec, PackageRecord};
+use rattler_conda_types::{NamelessMatchSpec, PackageRecord};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
@@ -65,7 +65,8 @@ fn wrap_range_from_middle(
 }
 
 struct PackageDependency<'a> {
-    matchspec: &'a MatchSpec,
+    name: &'a str,
+    matchspec: &'a NamelessMatchSpec,
     last_successful_resolution: Option<PkgIdxOffset>,
 }
 
@@ -110,17 +111,24 @@ impl<'a> PackageRelations<'a> {
         let mut dependencies = Vec::with_capacity(package_record.depends.len());
         let package_name = package_record.name.as_source();
         for depend in &package_record.depends {
-            let matchspec = self.matchspec_cache.get_or_insert(depend);
+            let dependency_name = depend.split_whitespace().next().unwrap();
+            let matchspec;
+            if dependency_name.len() == depend.len() {
+                matchspec = self.matchspec_cache.get_or_insert("");
+            } else {
+                matchspec = self
+                    .matchspec_cache
+                    .get_or_insert(&depend[dependency_name.len() + 1..]);
+            }
             dependencies.push(PackageDependency {
+                name: dependency_name,
                 matchspec,
                 last_successful_resolution: None,
             });
-            if let Some(depends_package_name) = &matchspec.name {
-                self.package_name_to_consumers
-                    .entry(depends_package_name.as_source())
-                    .or_default()
-                    .insert(package_name);
-            }
+            self.package_name_to_consumers
+                .entry(dependency_name)
+                .or_default()
+                .insert(package_name);
         }
 
         self.package_metadatas.push(PackageMetadata {
@@ -259,7 +267,7 @@ impl<'a> PackageRelations<'a> {
     pub fn apply_matchspecs(
         &mut self,
         package_name: &str,
-        specs: &[&MatchSpec],
+        specs: &[&NamelessMatchSpec],
     ) -> Vec<RemovedByUserLog<'a>> {
         let mut result = Vec::new();
         if let Some((start, offset)) = self.package_name_to_providers.get(package_name) {
@@ -304,7 +312,7 @@ impl<'a> PackageRelations<'a> {
             }
             if found_first == false {
                 for dependency in &self.package_metadatas[index].dependencies {
-                    let name = dependency.matchspec.name.as_ref().unwrap().as_source();
+                    let name = dependency.name;
                     relevant_packages.insert(name);
                     let mut matchspecs = HashSet::new();
                     matchspecs.insert(dependency.matchspec);
@@ -314,7 +322,7 @@ impl<'a> PackageRelations<'a> {
             } else {
                 let mut local_relevant_packages = HashSet::new();
                 for dependency in &self.package_metadatas[index].dependencies {
-                    let name = dependency.matchspec.name.as_ref().unwrap().as_source();
+                    let name = dependency.name;
                     if let Some(specs) = relevant_matchspecs.get_mut(name) {
                         specs.insert(dependency.matchspec);
                         local_relevant_packages.insert(name);
@@ -329,9 +337,10 @@ impl<'a> PackageRelations<'a> {
 
         for package in relevant_packages {
             let specs = relevant_matchspecs.remove(package).unwrap();
-            for item in
-                self.apply_matchspecs(package, &specs.into_iter().collect::<Vec<&MatchSpec>>())
-            {
+            for item in self.apply_matchspecs(
+                package,
+                &specs.into_iter().collect::<Vec<&NamelessMatchSpec>>(),
+            ) {
                 result.push(RemovedBecauseIncompatibleLog {
                     package_name: item.package_name,
                     filename: item.filename,
@@ -394,7 +403,7 @@ impl<'a> PackageRelations<'a> {
             .dependencies
             .iter()
             .enumerate()
-            .find(|(_, d)| d.matchspec.name.as_ref().unwrap().as_source() == depending_on);
+            .find(|(_, d)| d.name == depending_on);
         if depfind.is_none() {
             return None; // No, it does not.
         }
