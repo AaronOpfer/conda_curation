@@ -123,13 +123,6 @@ impl<'a> PackageRelations<'a> {
             }
         }
 
-        let fastpath = match self.package_metadatas.last() {
-            Some(last) => last.filename <= filename,
-            None => true,
-        };
-        if !fastpath {
-            todo!();
-        }
         self.package_metadatas.push(PackageMetadata {
             removed: false,
             filename,
