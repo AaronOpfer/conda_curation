@@ -335,7 +335,7 @@ impl<'a> PackageRelations<'a> {
             }
         }
 
-        for package in relevant_packages {
+        for package in &relevant_packages {
             let specs = relevant_matchspecs.remove(package).unwrap();
             for item in self.apply_matchspecs(
                 package,
@@ -349,6 +349,10 @@ impl<'a> PackageRelations<'a> {
             }
         }
 
+        for package in relevant_packages {
+            let mut sub_results = self.apply_must_compatible(package);
+            result.append(&mut sub_results);
+        }
         result
     }
 

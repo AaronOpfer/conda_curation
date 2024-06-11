@@ -10,7 +10,7 @@
 * Remove packages that have been superceded by new builds (i.e. `python-3.9.18-h12345678_0` is superceded by `python-3.9.18-h12345678_1`, and so the former package is removed)
 * Remove `dev` and `rc` packages (i.e. `2.0.0.dev0` or `2.0.0.rc0`).
 * Remove packages that track undesired features (i.e. `pypy`, etc)
-* Remove packages that are incompatible with any available candidates of another package chosen by the user (i.e. `python`) (presently not recursively)
+* Remove packages that are incompatible with any available candidates of another package chosen by the user. For example, if user only selects `python >=3.12`, and specifies `-C python`, then older `openssl` such as `openssl 1.1.1n` will be removed, since `mamba create -n ... openssl==1.1.1n python>=3.12` cannot be solved.
 * After applying any/all of the above filters, perform follow-up analysis to find packages which depended on now-removed dependencies, and remove those as well, and apply this recursively. For example, filtering out Python 2.7 will also filter out all builds of numpy that were compiled against Python 2.7.
 
 ### Standards

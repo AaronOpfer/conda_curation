@@ -157,6 +157,13 @@ async fn main() {
         println!("       dev & rc: - {removal_count:>7} ({duration:>2.7}s)");
     }
 
+    unresolveable(
+        &mut relations,
+        &mut removed_filenames,
+        &next_round,
+        args.explain,
+    );
+
     for package_name in &args.must_compatible {
         let start = Instant::now();
         let mut removal_count = 0;
@@ -170,37 +177,15 @@ async fn main() {
             next_round.insert(log_entry.package_name);
         }
         let duration = start.elapsed().as_secs_f64();
-        println!("  compat {package_name}: - {removal_count:>7} ({duration:>2.7}s)")
+        println!("  compat {package_name}: - {removal_count:>7} ({duration:>2.7}s)");
+        unresolveable(
+            &mut relations,
+            &mut removed_filenames,
+            &next_round,
+            args.explain,
+        );
     }
 
-    {
-        let mut round = 0;
-        while !next_round.is_empty() {
-            let start = Instant::now();
-            round += 1;
-            let mut removal_count = 0;
-            let this_round = next_round.clone();
-            next_round.clear();
-
-            let mut round_logs = relations.find_unresolveables(this_round.into_iter().collect());
-            removal_count += round_logs.len();
-            for log_entry in &round_logs {
-                if removed_filenames.insert(log_entry.filename) {
-                    removal_count += 1;
-                    if args.explain {
-                        println!("{}", log_entry);
-                    }
-                }
-                next_round.insert(log_entry.package_name);
-            }
-            round_logs.sort_unstable_by_key(|l| l.filename);
-            if next_round.is_empty() {
-                break;
-            }
-            let duration = start.elapsed().as_secs_f64();
-            println!(" No Sln Round {round}: - {removal_count:>7} ({duration:>2.7}s)");
-        }
-    }
     let total_removed_count = removed_filenames.len();
     let remaining_count = package_count - total_removed_count;
     let percent = remaining_count as f32 / package_count as f32;
@@ -230,4 +215,39 @@ async fn main() {
             .expect("failed to write noarch repodata");
         },
     );
+}
+
+fn unresolveable<'a>(
+    relations: &mut PackageRelations<'a>,
+    removed_filenames: &mut HashSet<&'a str>,
+    test_set: &HashSet<&'a str>,
+    explain: bool,
+) {
+    let mut round = 0;
+    let mut next_round: HashSet<&'a str> = test_set.clone();
+    while !next_round.is_empty() {
+        let start = Instant::now();
+        round += 1;
+        let mut removal_count = 0;
+        let this_round = next_round.clone();
+        next_round.clear();
+
+        let mut round_logs = relations.find_unresolveables(this_round.into_iter().collect());
+        removal_count += round_logs.len();
+        for log_entry in &round_logs {
+            if removed_filenames.insert(log_entry.filename) {
+                removal_count += 1;
+                if explain {
+                    println!("{}", log_entry);
+                }
+            }
+            next_round.insert(log_entry.package_name);
+        }
+        round_logs.sort_unstable_by_key(|l| l.filename);
+        if next_round.is_empty() {
+            break;
+        }
+        let duration = start.elapsed().as_secs_f64();
+        println!(" No Sln Round {round}: - {removal_count:>7} ({duration:>2.7}s)");
+    }
 }
