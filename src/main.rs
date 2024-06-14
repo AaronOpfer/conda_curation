@@ -57,7 +57,11 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
-    let args = Cli::parse();
+    let mut args = Cli::parse();
+    if !args.channel_alias.ends_with("/") {
+        args.channel_alias += "/";
+    }
+    let args = args; // read-only for now on.
 
     let banned_features: HashSet<&str> = args.ban_features.iter().map(String::as_str).collect();
     let yaml_data = MatchspecYaml::from_file(&args.matchspecs_yaml.to_str().unwrap()).unwrap();

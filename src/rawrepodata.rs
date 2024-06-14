@@ -48,16 +48,19 @@ pub fn filtered_repodata_to_file(
     out.conda_packages
         .retain(|package_filename, _| predicate(package_filename));
     if out.base_url() == None {
+        // In conda's unit tests, they did not include a trailing slash on base_url.
+        let url = Some(format!("{possible_replacement_base_url}{subdir}"));
         match out.info {
             None => {
                 out.info = Some(ChannelInfo {
                     subdir: subdir.to_string(),
-                    base_url: Some(possible_replacement_base_url.to_string()),
+                    base_url: url,
                 })
             }
-            Some(ref mut info) => info.base_url = Some(possible_replacement_base_url.to_string()),
+            Some(ref mut info) => info.base_url = url,
         }
     }
+    out.version = Some(2);
 
     {
         let repodata = serde_json::to_string(&out)?;
