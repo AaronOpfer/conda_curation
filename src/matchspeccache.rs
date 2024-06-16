@@ -57,7 +57,7 @@ mod tests {
         let spec1 = cache.get_or_insert("python 3.6");
         let spec2 = cache.get_or_insert("python 3.6");
         let spec3 = cache.get_or_insert("python 3.7");
-        assert_eq!(spec1, spec2);
+        assert!(std::ptr::eq(spec1, spec2));
         assert_ne!(spec2, spec3);
     }
 }
