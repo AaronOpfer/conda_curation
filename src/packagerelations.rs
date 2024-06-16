@@ -79,8 +79,6 @@ struct PackageMetadata<'a> {
 }
 
 pub struct PackageRelations<'a> {
-    matchspec_cache: &'a MatchspecCache<'a, 'a>,
-
     // Sorted by filename. Implies also sorted by packagename.
     // this allows us to use a range system to define packages.
     package_metadatas: Vec<PackageMetadata<'a>>,
@@ -96,10 +94,9 @@ pub struct PackageRelations<'a> {
 }
 
 impl<'a> PackageRelations<'a> {
-    pub fn new(matchspec_cache: &'a MatchspecCache<'a, 'a>) -> Self {
+    pub fn new() -> Self {
         const CAPACITY: usize = 768 * 1024;
         PackageRelations {
-            matchspec_cache,
             package_metadatas: Vec::with_capacity(CAPACITY),
             filename_to_metadata: HashMap::with_capacity(CAPACITY),
             package_name_to_providers: HashMap::with_capacity(CAPACITY),
@@ -107,18 +104,21 @@ impl<'a> PackageRelations<'a> {
         }
     }
 
-    pub fn insert(&mut self, filename: &'a str, package_record: &'a PackageRecord) {
+    pub fn insert(
+        &mut self,
+        matchspec_cache: &'a MatchspecCache<'a, 'a>,
+        filename: &'a str,
+        package_record: &'a PackageRecord,
+    ) {
         let mut dependencies = Vec::with_capacity(package_record.depends.len());
         let package_name = package_record.name.as_source();
         for depend in &package_record.depends {
             let dependency_name = depend.split_whitespace().next().unwrap();
             let matchspec;
             if dependency_name.len() == depend.len() {
-                matchspec = self.matchspec_cache.get_or_insert("");
+                matchspec = matchspec_cache.get_or_insert("");
             } else {
-                matchspec = self
-                    .matchspec_cache
-                    .get_or_insert(&depend[dependency_name.len() + 1..]);
+                matchspec = matchspec_cache.get_or_insert(&depend[dependency_name.len() + 1..]);
             }
             dependencies.push(PackageDependency {
                 name: dependency_name,

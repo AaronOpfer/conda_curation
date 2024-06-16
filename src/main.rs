@@ -79,14 +79,14 @@ async fn main() {
         || RepoData::from_path(&noarch_repodata_fn).expect("failed to load test data"),
         || RepoData::from_path(&linux64_repodata_fn).expect("failed to load test data"),
     );
-    let mut relations = PackageRelations::new(&matchspeccache);
+    let mut relations = PackageRelations::new();
 
     let package_count = {
         let mut i = 0;
         for (package_filename, package_record) in
             rawrepodata::sorted_iter(&[&repodata_linux, &repodata_noarch])
         {
-            relations.insert(package_filename, package_record);
+            relations.insert(&matchspeccache, package_filename, package_record);
             i += 1;
         }
         i
