@@ -47,7 +47,7 @@ pub fn filtered_repodata_to_file(
         .retain(|package_filename, _| predicate(package_filename));
     out.conda_packages
         .retain(|package_filename, _| predicate(package_filename));
-    if out.base_url() == None {
+    if out.base_url().is_none() {
         // In conda's unit tests, they did not include a trailing slash on base_url.
         let url = Some(format!("{possible_replacement_base_url}{subdir}"));
         match out.info {
@@ -55,7 +55,7 @@ pub fn filtered_repodata_to_file(
                 out.info = Some(ChannelInfo {
                     subdir: subdir.to_string(),
                     base_url: url,
-                })
+                });
             }
             Some(ref mut info) => info.base_url = url,
         }
@@ -70,7 +70,7 @@ pub fn filtered_repodata_to_file(
     Ok(())
 }
 
-pub fn sorted_iter<'a>(repodatas: &[&'a RepoData]) -> Vec<(&'a String, &'a PackageRecord)> {
+#[must_use] pub fn sorted_iter<'a>(repodatas: &[&'a RepoData]) -> Vec<(&'a String, &'a PackageRecord)> {
     let mut everything: Vec<(&'a String, &'a PackageRecord)> = repodatas
         .iter()
         .flat_map(|repodata| {
@@ -84,7 +84,7 @@ pub fn sorted_iter<'a>(repodatas: &[&'a RepoData]) -> Vec<(&'a String, &'a Packa
         a.1.name
             .cmp(&b.1.name)
             .then(a.1.version.cmp(&b.1.version))
-            .then(a.0.cmp(&b.0))
+            .then(a.0.cmp(b.0))
     });
     everything
 }

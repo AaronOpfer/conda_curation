@@ -94,6 +94,7 @@ pub struct PackageRelations<'a> {
 }
 
 impl<'a> PackageRelations<'a> {
+    #[must_use]
     pub fn new() -> Self {
         const CAPACITY: usize = 768 * 1024;
         PackageRelations {
@@ -114,12 +115,11 @@ impl<'a> PackageRelations<'a> {
         let package_name = package_record.name.as_source();
         for depend in &package_record.depends {
             let dependency_name = depend.split_whitespace().next().unwrap();
-            let matchspec;
-            if dependency_name.len() == depend.len() {
-                matchspec = matchspec_cache.get_or_insert("");
+            let matchspec = if dependency_name.len() == depend.len() {
+                matchspec_cache.get_or_insert("")
             } else {
-                matchspec = matchspec_cache.get_or_insert(&depend[dependency_name.len() + 1..]);
-            }
+                matchspec_cache.get_or_insert(&depend[dependency_name.len() + 1..])
+            };
             dependencies.push(PackageDependency {
                 name: dependency_name,
                 matchspec,
@@ -186,9 +186,9 @@ impl<'a> PackageRelations<'a> {
 
     pub fn apply_feature_removal(
         &mut self,
-        features: HashSet<&str>,
+        features: &HashSet<&str>,
     ) -> Vec<RemovedWithFeatureLog<'a>> {
-        if features.len() == 0 {
+        if features.is_empty() {
             let res = Vec::with_capacity(0);
             return res;
         }
@@ -307,10 +307,10 @@ impl<'a> PackageRelations<'a> {
         let mut found_first = false;
 
         for index in self.mkrange(package_name) {
-            if self.package_metadatas[index].removed == true {
+            if self.package_metadatas[index].removed {
                 continue;
             }
-            if found_first == false {
+            if !found_first {
                 for dependency in &self.package_metadatas[index].dependencies {
                     let name = dependency.name;
                     relevant_packages.insert(name);
@@ -329,7 +329,7 @@ impl<'a> PackageRelations<'a> {
                     }
                 }
                 relevant_packages = &relevant_packages & &local_relevant_packages;
-                if relevant_packages.len() == 0 {
+                if relevant_packages.is_empty() {
                     break;
                 }
             }

@@ -58,7 +58,7 @@ struct Cli {
 #[tokio::main]
 async fn main() {
     let mut args = Cli::parse();
-    if !args.channel_alias.ends_with("/") {
+    if !args.channel_alias.ends_with('/') {
         args.channel_alias += "/";
     }
     let args = args; // read-only for now on.
@@ -106,7 +106,7 @@ async fn main() {
                 if removed_filenames.insert(log_entry.filename) {
                     removal_count += 1;
                     if args.explain {
-                        println!("{}", log_entry);
+                        println!("{log_entry}");
                     }
                 }
             }
@@ -121,7 +121,7 @@ async fn main() {
             if removed_filenames.insert(log_entry.filename) {
                 removal_count += 1;
                 if args.explain {
-                    println!("{}", log_entry);
+                    println!("{log_entry}");
                 }
             }
             next_round.insert(log_entry.package_name);
@@ -132,11 +132,11 @@ async fn main() {
     {
         let start = Instant::now();
         let mut removal_count = 0;
-        for log_entry in relations.apply_feature_removal(banned_features) {
+        for log_entry in relations.apply_feature_removal(&banned_features) {
             if removed_filenames.insert(log_entry.filename) {
                 removal_count += 1;
                 if args.explain {
-                    println!("{}", log_entry);
+                    println!("{log_entry}");
                 }
             }
             next_round.insert(log_entry.package_name);
@@ -152,7 +152,7 @@ async fn main() {
             if removed_filenames.insert(log_entry.filename) {
                 removal_count += 1;
                 if args.explain {
-                    println!("{}", log_entry);
+                    println!("{log_entry}");
                 }
             }
             next_round.insert(log_entry.package_name);
@@ -175,7 +175,7 @@ async fn main() {
             if removed_filenames.insert(log_entry.filename) {
                 removal_count += 1;
                 if args.explain {
-                    println!("{}", log_entry);
+                    println!("{log_entry}");
                 }
             }
             next_round.insert(log_entry.package_name);
@@ -190,10 +190,12 @@ async fn main() {
         );
     }
 
+    // We want to round up the floating point value that we calculate.
+    // Integer division rounds down. So, we'll calculate the percentage
+    // of packages we removed, and then subtract 1 from it instead.
     let total_removed_count = removed_filenames.len();
     let remaining_count = package_count - total_removed_count;
-    let percent = remaining_count as f32 / package_count as f32;
-    let percent = (percent * 100.0).ceil();
+    let percent = 100 - (total_removed_count * 100 / package_count);
     println!("=============================================");
     println!("      Remaining:   {remaining_count:>7} ({percent}% of original)");
 
@@ -242,7 +244,7 @@ fn unresolveable<'a>(
             if removed_filenames.insert(log_entry.filename) {
                 removal_count += 1;
                 if explain {
-                    println!("{}", log_entry);
+                    println!("{log_entry}");
                 }
             }
             next_round.insert(log_entry.package_name);

@@ -19,7 +19,7 @@ lto = "fat"
 codegen-units = 1
 
 [lints.clippy]
-pedantic = "warn"
+pedantic = { level = "warn", priority = -1 }
 missing-errors-doc = "allow"
 missing-panics-doc = "allow"
 
