@@ -1,5 +1,5 @@
 use conda_curation::matchspeccache::MatchspecCache;
-use conda_curation::matchspecyaml::MatchspecYaml;
+use conda_curation::matchspecyaml::get_user_matchspecs;
 use conda_curation::packagerelations::PackageRelations;
 use conda_curation::rawrepodata;
 use conda_curation::rawrepodata::filtered_repodata_to_file;
@@ -64,8 +64,8 @@ async fn main() {
     let args = args; // read-only for now on.
 
     let banned_features: HashSet<&str> = args.ban_features.iter().map(String::as_str).collect();
-    let yaml_data = MatchspecYaml::from_file(&args.matchspecs_yaml.to_str().unwrap()).unwrap();
-    let user_matchspecs = yaml_data.matchspecs().unwrap();
+    let user_matchspecs = get_user_matchspecs(&args.matchspecs_yaml)
+        .expect("Failed to load user-provided matchspecs file");
     let matchspeccache = MatchspecCache::with_capacity(1024 * 192);
 
     let rawrepodata::RepodataFilenames {
@@ -76,8 +76,8 @@ async fn main() {
         .expect("Failed to download repodata");
 
     let (repodata_noarch, repodata_linux) = rayon::join(
-        || RepoData::from_path(&noarch_repodata_fn).expect("failed to load test data"),
-        || RepoData::from_path(&linux64_repodata_fn).expect("failed to load test data"),
+        || RepoData::from_path(&noarch_repodata_fn).expect("failed to load noarch repodata"),
+        || RepoData::from_path(&linux64_repodata_fn).expect("failed to load linux64 repodataa"),
     );
     let mut relations = PackageRelations::new();
 
@@ -99,7 +99,7 @@ async fn main() {
         let start = Instant::now();
         let mut removal_count = 0;
         for (package_name, user_matchspecs) in &user_matchspecs {
-            next_round.insert(*package_name);
+            next_round.insert(package_name.as_str());
             let spec_arg: Vec<&rattler_conda_types::NamelessMatchSpec> =
                 user_matchspecs.iter().collect();
             for log_entry in relations.apply_matchspecs(package_name, &spec_arg) {
