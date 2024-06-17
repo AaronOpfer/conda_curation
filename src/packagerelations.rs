@@ -302,36 +302,35 @@ impl<'a> PackageRelations<'a> {
         package_name: &'a str,
     ) -> Vec<RemovedBecauseIncompatibleLog<'a>> {
         let mut result = Vec::new();
+
+        let mut range = self
+            .mkrange(package_name)
+            .filter(|index| !self.package_metadatas[*index].removed);
+
         let mut relevant_packages = HashSet::new();
         let mut relevant_matchspecs = HashMap::new();
-        let mut found_first = false;
+        let index = range.next();
+        if index.is_none() {
+            return result;
+        }
+        let index = index.unwrap();
+        for dependency in &self.package_metadatas[index].dependencies {
+            relevant_packages.insert(dependency.name);
+            relevant_matchspecs.insert(dependency.name, HashSet::from([dependency.matchspec]));
+        }
 
-        for index in self.mkrange(package_name) {
-            if self.package_metadatas[index].removed {
-                continue;
+        for index in range {
+            let mut local_relevant_packages = HashSet::new();
+            for dependency in &self.package_metadatas[index].dependencies {
+                let name = dependency.name;
+                if let Some(specs) = relevant_matchspecs.get_mut(name) {
+                    specs.insert(dependency.matchspec);
+                    local_relevant_packages.insert(name);
+                }
             }
-            if !found_first {
-                for dependency in &self.package_metadatas[index].dependencies {
-                    let name = dependency.name;
-                    relevant_packages.insert(name);
-                    let mut matchspecs = HashSet::new();
-                    matchspecs.insert(dependency.matchspec);
-                    relevant_matchspecs.insert(name, matchspecs);
-                }
-                found_first = true;
-            } else {
-                let mut local_relevant_packages = HashSet::new();
-                for dependency in &self.package_metadatas[index].dependencies {
-                    let name = dependency.name;
-                    if let Some(specs) = relevant_matchspecs.get_mut(name) {
-                        specs.insert(dependency.matchspec);
-                        local_relevant_packages.insert(name);
-                    }
-                }
-                relevant_packages = &relevant_packages & &local_relevant_packages;
-                if relevant_packages.is_empty() {
-                    break;
-                }
+            relevant_packages = &relevant_packages & &local_relevant_packages;
+            if relevant_packages.is_empty() {
+                break;
             }
         }
 
