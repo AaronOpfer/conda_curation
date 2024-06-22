@@ -1,0 +1,6 @@
+[alias]
+# "Run Release"
+rr = "run --release -- -F pypy -C python matchspecs/secure_python.yaml"
+# "Run Debug"
+rd = "run -- -F pypy -C python matchspecs/secure_python.yaml"
+

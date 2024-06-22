@@ -37,11 +37,17 @@ pub async fn fetch_repodata(
 
 pub fn filtered_repodata_to_file(
     initial: &RepoData,
-    filename: &str,
+    output_dir: &std::path::PathBuf,
     predicate: impl Fn(&str) -> bool,
     subdir: &str,
     possible_replacement_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let mut filepath = output_dir.clone();
+    filepath.push(subdir);
+    fs::create_dir_all(&filepath).expect("Failed to create directory for arch");
+    filepath.push("repodata.json");
+    let filename = filepath;
+
     let mut out = initial.clone();
     out.packages
         .retain(|package_filename, _| predicate(package_filename));
@@ -70,7 +76,8 @@ pub fn filtered_repodata_to_file(
     Ok(())
 }
 
-#[must_use] pub fn sorted_iter<'a>(repodatas: &[&'a RepoData]) -> Vec<(&'a String, &'a PackageRecord)> {
+#[must_use]
+pub fn sorted_iter<'a>(repodatas: &[&'a RepoData]) -> Vec<(&'a String, &'a PackageRecord)> {
     let mut everything: Vec<(&'a String, &'a PackageRecord)> = repodatas
         .iter()
         .flat_map(|repodata| {

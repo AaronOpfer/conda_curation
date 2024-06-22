@@ -22,20 +22,10 @@ use clap::Parser;
 )]
 struct Cli {
     /// remove packages with this feature
-    #[arg(
-        short = 'F',
-        long = "ban-feature",
-        value_name = "FEATURE",
-        default_value = "pypy"
-    )]
+    #[arg(short = 'F', long = "ban-feature", value_name = "FEATURE")]
     ban_features: Vec<String>,
     /// remove packages that aren't compatible with any providers of provided package
-    #[arg(
-        short = 'C',
-        long = "compatible-with",
-        value_name = "PACKAGE_NAME",
-        default_value = "python"
-    )]
+    #[arg(short = 'C', long = "compatible-with", value_name = "PACKAGE_NAME")]
     must_compatible: Vec<String>,
     /// don't remove development (dev) packages
     #[arg(long = "keep-dev", action=clap::ArgAction::SetFalse)]
@@ -52,6 +42,9 @@ struct Cli {
     /// Emit the reasons why packages are being removed.
     #[arg(short = 'e', long = "explain")]
     explain: bool,
+    /// Write repodata.json files to the specified directory
+    #[arg(long = "output-dir", default_value = "out")]
+    output_directory: std::path::PathBuf,
     matchspecs_yaml: std::path::PathBuf,
 }
 
@@ -62,6 +55,8 @@ async fn main() {
         args.channel_alias += "/";
     }
     let args = args; // read-only for now on.
+
+    std::fs::create_dir_all(&args.output_directory).expect("Failed to create output directory");
 
     let banned_features: HashSet<&str> = args.ban_features.iter().map(String::as_str).collect();
     let user_matchspecs = get_user_matchspecs(&args.matchspecs_yaml)
@@ -203,7 +198,7 @@ async fn main() {
         || {
             filtered_repodata_to_file(
                 &repodata_linux,
-                "linux-64/repodata.json",
+                &args.output_directory,
                 |pkfn| !removed_filenames.contains(pkfn),
                 "linux-64",
                 &args.channel_alias,
@@ -213,7 +208,7 @@ async fn main() {
         || {
             filtered_repodata_to_file(
                 &repodata_noarch,
-                "noarch/repodata.json",
+                &args.output_directory,
                 |pkfn| !removed_filenames.contains(pkfn),
                 "noarch",
                 &args.channel_alias,

@@ -1,7 +1,6 @@
 /target
 /Cargo.lock
 *.swp
-*_repodata.json
 *.py
 linux-64
 noarch
