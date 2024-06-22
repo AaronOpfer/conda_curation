@@ -24,8 +24,12 @@ struct Cli {
     /// remove packages with this feature
     #[arg(short = 'F', long = "ban-feature", value_name = "FEATURE")]
     ban_features: Vec<String>,
-    /// remove packages that aren't compatible with any providers of provided package
-    #[arg(short = 'C', long = "compatible-with", value_name = "PACKAGE_NAME")]
+    /// remove packages that aren't compatible with any variant of PACKAGE_NAME
+    #[arg(
+        short = 'C',
+        long = "must-compatible-with",
+        value_name = "PACKAGE_NAME"
+    )]
     must_compatible: Vec<String>,
     /// don't remove development (dev) packages
     #[arg(long = "keep-dev", action=clap::ArgAction::SetFalse)]
@@ -36,14 +40,15 @@ struct Cli {
     /// Base URL for downloading repodata
     #[arg(
         long = "channel-alias",
-        default_value = "https://conda.anaconda.org/conda-forge/"
+        default_value = "https://conda.anaconda.org/conda-forge/",
+        value_name = "CHANNEL_URL"
     )]
     channel_alias: String,
     /// Emit the reasons why packages are being removed.
     #[arg(short = 'e', long = "explain")]
     explain: bool,
     /// Write repodata.json files to the specified directory
-    #[arg(long = "output-dir", default_value = "out")]
+    #[arg(short = 'o', long = "output-dir", default_value = "out")]
     output_directory: std::path::PathBuf,
     matchspecs_yaml: std::path::PathBuf,
 }
