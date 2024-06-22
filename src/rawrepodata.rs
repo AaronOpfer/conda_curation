@@ -1,3 +1,4 @@
+use futures::{StreamExt, TryStreamExt};
 use rattler::default_cache_dir;
 use rattler_conda_types::{ChannelInfo, PackageRecord, RepoData};
 use rattler_repodata_gateway::fetch;
@@ -8,30 +9,51 @@ use std::path::PathBuf;
 use url::Url;
 
 pub struct RepodataFilenames {
-    pub linux64: PathBuf,
     pub noarch: PathBuf,
+    pub arches: Vec<PathBuf>,
 }
 
 pub async fn fetch_repodata(
     channel_alias: &str,
+    architectures: &Vec<String>,
 ) -> Result<RepodataFilenames, Box<dyn std::error::Error>> {
-    let lin64_url = Url::parse(&(channel_alias.to_string() + "linux-64/"))?;
-    let noarch_url = Url::parse(&(channel_alias.to_string() + "noarch/"))?;
-    let client = ClientWithMiddleware::from(Client::new());
-    let cache = default_cache_dir()?;
-    let opts = fetch::FetchRepoDataOptions {
-        ..Default::default()
-    };
-    let linresult = fetch::fetch_repo_data(lin64_url, client, cache, opts, None).await?;
-    let client = ClientWithMiddleware::from(Client::new());
-    let cache = default_cache_dir()?;
-    let opts = fetch::FetchRepoDataOptions {
-        ..Default::default()
-    };
-    let noarchresult = fetch::fetch_repo_data(noarch_url, client, cache, opts, None).await?;
+    let cache = &default_cache_dir()?;
+    let all_architectures = architectures.iter().map(|a| a.as_str()).chain(["noarch"]);
+    let repodata_urls: Vec<Url> = all_architectures
+        .map(|architecture| Url::parse(&(format!("{channel_alias}{architecture}/"))))
+        .collect::<Result<Vec<Url>, _>>()?;
+    let mut repodata_fns: Vec<PathBuf> = futures::stream::iter(repodata_urls)
+        .map(|repodata_url| {
+            let client = ClientWithMiddleware::from(Client::new());
+            let opts = fetch::FetchRepoDataOptions {
+                ..Default::default()
+            };
+            async move {
+                let result =
+                    fetch::fetch_repo_data(repodata_url.clone(), client, cache.clone(), opts, None)
+                        .await;
+                use rattler_repodata_gateway::fetch::CacheResult;
+                result.map(|result| {
+                    match &result.cache_result {
+                        CacheResult::CacheHit | CacheResult::CacheHitAfterFetch => {}
+                        CacheResult::CacheOutdated | CacheResult::CacheNotPresent => {
+                            println!("fetched {repodata_url}")
+                        }
+                    }
+
+                    result.repo_data_json_path
+                })
+            }
+        })
+        .buffered(20)
+        .try_collect()
+        .await?;
+
+    let noarch = repodata_fns.pop().unwrap();
+
     Ok(RepodataFilenames {
-        linux64: linresult.repo_data_json_path,
-        noarch: noarchresult.repo_data_json_path,
+        noarch,
+        arches: repodata_fns,
     })
 }
 

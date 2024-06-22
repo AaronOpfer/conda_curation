@@ -1,6 +1,10 @@
 [alias]
 # "Run Release"
-rr = "run --release -- -F pypy -C python matchspecs/secure_python.yaml"
+rr = "run --release -- -F pypy -C python -a linux-64 matchspecs/secure_python.yaml"
 # "Run Debug"
-rd = "run -- -F pypy -C python matchspecs/secure_python.yaml"
+rd = "run -- -F pypy -C python -a linux-64 matchspecs/secure_python.yaml"
+# "Run Release All Architectures"
+rraa = "run --release -- -F pypy -C python matchspecs/secure_python.yaml"
+# "Run Debug All Architectures"
+rdaa = "run -- -F pypy -C python matchspecs/secure_python.yaml"
 

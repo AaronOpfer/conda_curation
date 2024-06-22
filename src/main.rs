@@ -15,6 +15,25 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 use clap::Parser;
 
+const ARCHITECTURES: &[&str] = &[
+    "freebsd-64",
+    "linux-32",
+    "linux-64",
+    "linux-aarch64",
+    "linux-armv6l",
+    "linux-armv7l",
+    "linux-ppc64",
+    "linux-ppc64le",
+    "linux-riscv64",
+    "linux-s390x",
+    "osx-64",
+    "osx-arm64",
+    "win-32",
+    "win-64",
+    "win-arm64",
+    "zos-z",
+];
+
 #[derive(Parser)]
 #[command(
     author = "Aaron Opfer",
@@ -50,6 +69,10 @@ struct Cli {
     /// Write repodata.json files to the specified directory
     #[arg(short = 'o', long = "output-dir", default_value = "out")]
     output_directory: std::path::PathBuf,
+    /// Which architectures to render index information for. If none are specified, will default to
+    /// all architectures.
+    #[arg(short = 'a', long = "architecture")]
+    architectures: Vec<String>,
     matchspecs_yaml: std::path::PathBuf,
 }
 
@@ -58,6 +81,15 @@ async fn main() {
     let mut args = Cli::parse();
     if !args.channel_alias.ends_with('/') {
         args.channel_alias += "/";
+    }
+    if args.architectures.contains(&"noarch".to_string()) {
+        panic!("noarch does not need to be specified.");
+    }
+    if args.architectures.is_empty() {
+        args.architectures
+            .extend(ARCHITECTURES.iter().map(|arch| arch.to_string()));
+    } else {
+        // TODO: Validate architectures are sane.
     }
     let args = args; // read-only for now on.
 
@@ -70,10 +102,16 @@ async fn main() {
 
     let rawrepodata::RepodataFilenames {
         noarch: noarch_repodata_fn,
-        linux64: linux64_repodata_fn,
-    } = rawrepodata::fetch_repodata(&args.channel_alias)
+        arches: repodata_fns,
+    } = rawrepodata::fetch_repodata(&args.channel_alias, &args.architectures)
         .await
         .expect("Failed to download repodata");
+
+    let linux64_repodata_fn = &repodata_fns[args
+        .architectures
+        .iter()
+        .position(|a| a == "linux-64")
+        .unwrap()];
 
     let (repodata_noarch, repodata_linux) = rayon::join(
         || RepoData::from_path(&noarch_repodata_fn).expect("failed to load noarch repodata"),
