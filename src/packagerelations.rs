@@ -356,8 +356,10 @@ impl<'a> PackageRelations<'a> {
     }
 
     fn mkrange(&self, package_name: &str) -> Range<usize> {
-        let (start, offset) = self.package_name_to_providers[package_name];
-        start.range_to(offset)
+        match self.package_name_to_providers.get(package_name) {
+            Some((start, offset)) => start.range_to(*offset),
+            None => 0..0,
+        }
     }
 
     pub fn find_unresolveables(

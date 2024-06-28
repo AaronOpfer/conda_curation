@@ -14,6 +14,7 @@ use tikv_jemallocator::Jemalloc;
 static GLOBAL: Jemalloc = Jemalloc;
 
 use clap::Parser;
+use rayon::prelude::*;
 
 const ARCHITECTURES: &[&str] = &[
     "freebsd-64",
@@ -98,7 +99,7 @@ async fn main() {
     let banned_features: HashSet<&str> = args.ban_features.iter().map(String::as_str).collect();
     let user_matchspecs = get_user_matchspecs(&args.matchspecs_yaml)
         .expect("Failed to load user-provided matchspecs file");
-    let matchspeccache = MatchspecCache::with_capacity(1024 * 192);
+    let matchspec_cache = MatchspecCache::with_capacity(1024 * 192);
 
     let rawrepodata::RepodataFilenames {
         noarch: noarch_repodata_fn,
@@ -107,24 +108,80 @@ async fn main() {
         .await
         .expect("Failed to download repodata");
 
-    let linux64_repodata_fn = &repodata_fns[args
-        .architectures
-        .iter()
-        .position(|a| a == "linux-64")
-        .unwrap()];
+    let repodata_noarch =
+        RepoData::from_path(&noarch_repodata_fn).expect("Failed to load noarch repodata");
 
-    let (repodata_noarch, repodata_linux) = rayon::join(
-        || RepoData::from_path(&noarch_repodata_fn).expect("failed to load noarch repodata"),
-        || RepoData::from_path(&linux64_repodata_fn).expect("failed to load linux64 repodataa"),
-    );
+    let repodatas: Vec<RepoData> = repodata_fns
+        .into_par_iter()
+        .map(|repodata_fn| RepoData::from_path(&repodata_fn).expect("Failed to load repodata"))
+        .collect();
+
+    let pairs: Vec<(&RepoData, &String)> =
+        repodatas.iter().zip(args.architectures.iter()).collect();
+
+    let common_filtered_fns: HashSet<&str> = pairs
+        .into_iter()
+        .map(|(repodata_arch, architecture)| {
+            println!("{architecture}-----");
+            let removed_filenames = filter_repodata(
+                &args,
+                &matchspec_cache,
+                &user_matchspecs,
+                &banned_features,
+                &repodata_noarch,
+                repodata_arch,
+            );
+            filtered_repodata_to_file(
+                repodata_arch,
+                &args.output_directory,
+                |pkfn| !removed_filenames.contains(pkfn),
+                architecture,
+                &args.channel_alias,
+            )
+            .expect("Error writing repodata to file");
+            removed_filenames
+        })
+        .reduce(|mut left, right| {
+            left.extend(right);
+            left
+        })
+        .unwrap();
+    // Rayon Version
+    //.reduce(HashSet::<&str>::new, |mut acc, fns| {
+    //    acc.extend(fns);
+    //    acc
+    //})
+    //.into_iter()
+    //.collect();
+    filtered_repodata_to_file(
+        &repodata_noarch,
+        &args.output_directory,
+        |pkfn| !common_filtered_fns.contains(pkfn),
+        "noarch",
+        &args.channel_alias,
+    )
+    .expect("Failed writing noarch repodata to file");
+}
+
+fn filter_repodata<'a>(
+    args: &'a Cli,
+    matchspec_cache: &'a MatchspecCache<'a, 'a>,
+    user_matchspecs: &'a std::collections::HashMap<
+        String,
+        Vec<rattler_conda_types::NamelessMatchSpec>,
+    >,
+    banned_features: &HashSet<&str>,
+    repodata_noarch: &'a RepoData,
+    repodata_arch: &'a RepoData,
+) -> HashSet<&'a str> {
     let mut relations = PackageRelations::new();
 
     let package_count = {
         let mut i = 0;
         for (package_filename, package_record) in
-            rawrepodata::sorted_iter(&[&repodata_linux, &repodata_noarch])
+            rawrepodata::sorted_iter(&[repodata_arch, repodata_noarch])
         {
-            relations.insert(&matchspeccache, package_filename, package_record);
+            relations.insert(&matchspec_cache, package_filename, package_record);
             i += 1;
         }
         i
@@ -136,7 +193,7 @@ async fn main() {
     {
         let start = Instant::now();
         let mut removal_count = 0;
-        for (package_name, user_matchspecs) in &user_matchspecs {
+        for (package_name, user_matchspecs) in user_matchspecs {
             next_round.insert(package_name.as_str());
             let spec_arg: Vec<&rattler_conda_types::NamelessMatchSpec> =
                 user_matchspecs.iter().collect();
@@ -236,29 +293,7 @@ async fn main() {
     let percent = 100 - (total_removed_count * 100 / package_count);
     println!("=============================================");
     println!("      Remaining:   {remaining_count:>7} ({percent}% of original)");
-
-    rayon::join(
-        || {
-            filtered_repodata_to_file(
-                &repodata_linux,
-                &args.output_directory,
-                |pkfn| !removed_filenames.contains(pkfn),
-                "linux-64",
-                &args.channel_alias,
-            )
-            .expect("failed to write linux repodata");
-        },
-        || {
-            filtered_repodata_to_file(
-                &repodata_noarch,
-                &args.output_directory,
-                |pkfn| !removed_filenames.contains(pkfn),
-                "noarch",
-                &args.channel_alias,
-            )
-            .expect("failed to write noarch repodata");
-        },
-    );
+    return removed_filenames;
 }
 
 fn unresolveable<'a>(

@@ -10,6 +10,8 @@ pub struct Cache<'a, 'b, T> {
     lookup: RwLock<HashMap<&'a str, &'b T>>,
 }
 
+// unsafe impl<'a, 'b, T> Sync for Cache<'a, 'b, T> {}
+
 impl<'a, 'b, T: FromStr> Cache<'a, 'b, T>
 where
     T: FromStr,
