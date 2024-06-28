@@ -34,9 +34,7 @@ A security team may demand that insecure packages, such as older Python interpre
 
 ## Alpha Software
 
-There are significant feature limitations of this software, as it is currently targeting a Minimum Viable Product (MVP) of fitting into a specific point in Chicago Trading Company's artifact delivery. As such, it will be necessary for the user to bring their own HTTP proxy / cache proxy system for serving packages, but also contains a diversion for `.*repodata.*\.json.*` URLs that redirects to the rendered output of `conda_curation`. We have successfully done this using `nginx` with 301 redirects for asset downloads to the artifact server during thest testing phase, and by putting nginx directly in front of the artifact server in the deployment phase.
-
-Only one architecture + `noarch` can be filtered, and it is presently hardcoded to `linux-64`.
+There are significant feature limitations of this software, as it was initially only targeting a Minimum Viable Product (MVP) of fitting into a specific point in Chicago Trading Company's artifact delivery. As such, it will be necessary for the user to bring their own HTTP proxy / cache proxy system for serving packages, but also contains a diversion for `.*repodata.*\.json.*` URLs that redirects to the rendered output of `conda_curation`. We have successfully done this using `nginx` with 301 redirects for asset downloads to the artifact server during thest testing phase, and by putting nginx directly in front of the artifact server in the deployment phase.
 
 ## History
 
