@@ -15,7 +15,7 @@ pub struct RepodataFilenames {
 
 pub async fn fetch_repodata(
     channel_alias: &str,
-    architectures: &Vec<String>,
+    architectures: &[String],
     is_offline: bool,
 ) -> Result<RepodataFilenames, Box<dyn std::error::Error>> {
     let cache = &default_cache_dir()?;
@@ -63,12 +63,12 @@ pub async fn fetch_repodata(
 
 pub fn filtered_repodata_to_file(
     initial: &RepoData,
-    output_dir: &std::path::PathBuf,
+    output_dir: &std::path::Path,
     predicate: impl Fn(&str) -> bool,
     subdir: &str,
     possible_replacement_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut filepath = output_dir.clone();
+    let mut filepath = output_dir.to_path_buf();
     filepath.push(subdir);
     fs::create_dir_all(&filepath).expect("Failed to create directory for arch");
     filepath.push("repodata.json");

@@ -112,11 +112,11 @@ async fn main() {
         .expect("Failed to download repodata");
 
     let repodata_noarch =
-        RepoData::from_path(&noarch_repodata_fn).expect("Failed to load noarch repodata");
+        RepoData::from_path(noarch_repodata_fn).expect("Failed to load noarch repodata");
 
     let repodatas: Vec<RepoData> = repodata_fns
         .into_par_iter()
-        .map(|repodata_fn| RepoData::from_path(&repodata_fn).expect("Failed to load repodata"))
+        .map(|repodata_fn| RepoData::from_path(repodata_fn).expect("Failed to load repodata"))
         .collect();
 
     let pairs: Vec<(&RepoData, &String)> =
@@ -184,7 +184,7 @@ fn filter_repodata<'a>(
         for (package_filename, package_record) in
             rawrepodata::sorted_iter(&[repodata_arch, repodata_noarch])
         {
-            relations.insert(&matchspec_cache, package_filename, package_record);
+            relations.insert(matchspec_cache, package_filename, package_record);
             i += 1;
         }
         i
@@ -230,7 +230,7 @@ fn filter_repodata<'a>(
     {
         let start = Instant::now();
         let mut removal_count = 0;
-        for log_entry in relations.apply_feature_removal(&banned_features) {
+        for log_entry in relations.apply_feature_removal(banned_features) {
             if removed_filenames.insert(log_entry.filename) {
                 removal_count += 1;
                 if args.explain {
@@ -296,7 +296,7 @@ fn filter_repodata<'a>(
     let percent = 100 - (total_removed_count * 100 / package_count);
     println!("=============================================");
     println!("      Remaining:   {remaining_count:>7} ({percent}% of original)");
-    return removed_filenames;
+    removed_filenames
 }
 
 fn unresolveable<'a>(

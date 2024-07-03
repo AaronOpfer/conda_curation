@@ -93,6 +93,12 @@ pub struct PackageRelations<'a> {
     //package_name_build_to_providers: HashMap<(&'a str, &'a str), Vec<bool>>,
 }
 
+impl<'a> Default for PackageRelations<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> PackageRelations<'a> {
     #[must_use]
     pub fn new() -> Self {
