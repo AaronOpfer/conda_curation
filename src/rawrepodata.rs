@@ -16,6 +16,7 @@ pub struct RepodataFilenames {
 pub async fn fetch_repodata(
     channel_alias: &str,
     architectures: &Vec<String>,
+    is_offline: bool,
 ) -> Result<RepodataFilenames, Box<dyn std::error::Error>> {
     let cache = &default_cache_dir()?;
     let all_architectures = architectures.iter().map(|a| a.as_str()).chain(["noarch"]);
@@ -25,9 +26,12 @@ pub async fn fetch_repodata(
     let mut repodata_fns: Vec<PathBuf> = futures::stream::iter(repodata_urls)
         .map(|repodata_url| {
             let client = ClientWithMiddleware::from(Client::new());
-            let opts = fetch::FetchRepoDataOptions {
+            let mut opts = fetch::FetchRepoDataOptions {
                 ..Default::default()
             };
+            if is_offline {
+                opts.cache_action = fetch::CacheAction::ForceCacheOnly;
+            }
             async move {
                 let result =
                     fetch::fetch_repo_data(repodata_url.clone(), client, cache.clone(), opts, None)

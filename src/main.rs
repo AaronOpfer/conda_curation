@@ -64,6 +64,9 @@ struct Cli {
         value_name = "CHANNEL_URL"
     )]
     channel_alias: String,
+    /// Use cached repodata and do not make network calls
+    #[arg(long = "offline", action=clap::ArgAction::SetTrue)]
+    is_offline: bool,
     /// Emit the reasons why packages are being removed.
     #[arg(short = 'e', long = "explain")]
     explain: bool,
@@ -104,7 +107,7 @@ async fn main() {
     let rawrepodata::RepodataFilenames {
         noarch: noarch_repodata_fn,
         arches: repodata_fns,
-    } = rawrepodata::fetch_repodata(&args.channel_alias, &args.architectures)
+    } = rawrepodata::fetch_repodata(&args.channel_alias, &args.architectures, args.is_offline)
         .await
         .expect("Failed to download repodata");
 
