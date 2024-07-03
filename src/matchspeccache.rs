@@ -25,22 +25,28 @@ where
         }
     }
 
-    pub fn get_or_insert(&'b self, key: &'a str) -> &'b T {
+    pub fn get_or_insert(&'b self, key: &'a str) -> Result<&'b T, T::Err> {
         {
             // Read Path
             let reader = self.lookup.read().unwrap();
             if let Some(val) = reader.get(key) {
-                return val;
+                return Ok(val);
             }
         }
         {
+            use std::collections::hash_map::Entry;
             // Read-and-Probably-Write Path
-            self.lookup.write().unwrap().entry(key).or_insert_with(|| {
-                self.arena.alloc(
-                    T::from_str(key)
-                        .unwrap_or_else(|err| panic!("Malformed input: {key:?} {err:?}")),
-                )
-            })
+            match self.lookup.write().unwrap().entry(key) {
+                Entry::Occupied(e) => Ok(e.get()),
+                Entry::Vacant(e) => match T::from_str(key) {
+                    Ok(res) => {
+                        let the_ref = self.arena.alloc(res);
+                        e.insert(the_ref);
+                        Ok(the_ref)
+                    }
+                    Err(err) => Err(err),
+                },
+            }
         }
     }
 }

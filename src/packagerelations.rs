@@ -126,6 +126,7 @@ impl<'a> PackageRelations<'a> {
             } else {
                 matchspec_cache.get_or_insert(&depend[dependency_name.len() + 1..])
             };
+            let matchspec = matchspec.expect(filename);
             dependencies.push(PackageDependency {
                 name: dependency_name,
                 matchspec,
