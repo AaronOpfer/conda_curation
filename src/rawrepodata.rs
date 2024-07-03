@@ -19,7 +19,7 @@ pub async fn fetch_repodata(
     is_offline: bool,
 ) -> Result<RepodataFilenames, Box<dyn std::error::Error>> {
     let cache = &default_cache_dir()?;
-    let all_architectures = architectures.iter().map(|a| a.as_str()).chain(["noarch"]);
+    let all_architectures = architectures.iter().map(String::as_str).chain(["noarch"]);
     let repodata_urls: Vec<Url> = all_architectures
         .map(|architecture| Url::parse(&(format!("{channel_alias}{architecture}/"))))
         .collect::<Result<Vec<Url>, _>>()?;
@@ -41,7 +41,7 @@ pub async fn fetch_repodata(
                     match &result.cache_result {
                         CacheResult::CacheHit | CacheResult::CacheHitAfterFetch => {}
                         CacheResult::CacheOutdated | CacheResult::CacheNotPresent => {
-                            println!("fetched {repodata_url}")
+                            println!("fetched {repodata_url}");
                         }
                     }
 

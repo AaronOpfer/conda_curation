@@ -91,7 +91,7 @@ async fn main() {
     }
     if args.architectures.is_empty() {
         args.architectures
-            .extend(ARCHITECTURES.iter().map(|arch| arch.to_string()));
+            .extend(ARCHITECTURES.iter().map(|arch| (*arch).to_string()));
     } else {
         // TODO: Validate architectures are sane.
     }
