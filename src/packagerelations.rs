@@ -131,13 +131,23 @@ impl<'a> Default for PackageRelations<'a> {
 impl<'a> PackageRelations<'a> {
     #[must_use]
     pub fn new() -> Self {
-        const CAPACITY: usize = 768 * 1024;
+        const VERSIONS_CAPACITY: usize = 768 * 1024;
+        const PROVIDERS_CAPACITY: usize = 32 * 1024;
         PackageRelations {
-            package_dependencies: HashMap::new(),
-            package_metadatas: Vec::with_capacity(CAPACITY),
-            filename_to_metadata: HashMap::with_capacity(CAPACITY),
-            package_name_to_providers: HashMap::with_capacity(CAPACITY),
+            package_dependencies: HashMap::with_capacity(PROVIDERS_CAPACITY),
+            package_metadatas: Vec::with_capacity(VERSIONS_CAPACITY),
+            filename_to_metadata: HashMap::with_capacity(VERSIONS_CAPACITY),
+            package_name_to_providers: HashMap::with_capacity(PROVIDERS_CAPACITY),
         }
+    }
+
+    pub fn stats(&self) -> (usize, usize, usize) {
+        let edges = self.package_dependencies.values().map(|d| d.len()).sum();
+        (
+            self.package_metadatas.len(),
+            self.package_dependencies.len(),
+            edges,
+        )
     }
 
     pub fn insert(

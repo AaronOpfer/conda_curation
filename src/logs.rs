@@ -21,7 +21,7 @@ impl<'a> std::fmt::Display for RemovedUnsatisfiableLog<'a> {
             ),
             None => write!(
                 f,
-                "{} removed: dependency {} {} unsatisfiable",
+                "{} removed: dependency {} {} unsatisfiable, seemingly due to no fault of our own",
                 self.filename, self.dependency_package_name, self.matchspec
             ),
         }

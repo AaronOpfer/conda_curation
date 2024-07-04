@@ -179,17 +179,15 @@ fn filter_repodata<'a>(
 ) -> HashSet<&'a str> {
     let mut relations = PackageRelations::new();
 
-    let package_count = {
-        let mut i = 0;
-        for (package_filename, package_record) in
-            rawrepodata::sorted_iter(&[repodata_arch, repodata_noarch])
-        {
-            relations.insert(matchspec_cache, package_filename, package_record);
-            i += 1;
-        }
-        i
-    };
-    println!("  package count:   {package_count:>7}");
+    for (package_filename, package_record) in
+        rawrepodata::sorted_iter(&[repodata_arch, repodata_noarch])
+    {
+        relations.insert(matchspec_cache, package_filename, package_record);
+    }
+    let (package_count, package_name_count, edges) = relations.stats();
+    println!(
+        "  package count:   {package_count:>7} ({package_name_count} unique names, {edges} edges)"
+    );
 
     let mut removed_filenames = HashSet::new();
     let mut next_round = HashSet::new();
