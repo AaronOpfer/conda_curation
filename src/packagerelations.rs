@@ -9,9 +9,14 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
+struct DependencyKey<'a> {
+    name: &'a str,
+    matchspec: &'a str,
+}
+
 enum Evaluation<'a> {
-    RemoveAndLog((PkgIdx, RemovedUnsatisfiableLog<'a>)),
-    UpdateSolution((PkgIdx, usize, PkgIdxOffset)),
+    RemoveAndLog(DependencyKey<'a>, Option<PkgIdx>),
+    UpdateSolution(DependencyKey<'a>, PkgIdxOffset),
 }
 
 // We will support 4 billion packages at the most. That should
@@ -52,6 +57,16 @@ impl PkgIdxOffset {
     }
 }
 
+fn dependsstr_to_name_and_spec<'a>(depend: &'a str) -> (&'a str, &'a str) {
+    let dependency_name = depend.split_whitespace().next().unwrap();
+    let dependency_spec = if dependency_name.len() == depend.len() {
+        ""
+    } else {
+        &depend[dependency_name.len() + 1..]
+    };
+    (dependency_name, dependency_spec)
+}
+
 #[inline]
 fn wrap_range_from_middle(
     start: PkgIdx,
@@ -65,30 +80,44 @@ fn wrap_range_from_middle(
 }
 
 struct PackageDependency<'a> {
+    /// If Set, this dependency is permanently unsatisfiable
+    unsatisfiable: bool,
+    /// What package do we depend on?
     name: &'a str,
+    /// What is the original matchspec string?
+    matchspec_string: &'a str,
+    /// What is the matchspec?
     matchspec: &'a NamelessMatchSpec,
+    /// What package satisfied this dependency previously (if any)?
     last_successful_resolution: Option<PkgIdxOffset>,
+    /// What packages contain this dependency?
+    dependers: Vec<PkgIdx>,
+}
+
+impl<'a> PackageDependency<'a> {
+    fn make_key(&self) -> DependencyKey<'a> {
+        return DependencyKey {
+            name: self.name,
+            matchspec: self.matchspec_string,
+        };
+    }
 }
 
 struct PackageMetadata<'a> {
     removed: bool,
     filename: &'a str,
     package_record: &'a PackageRecord,
-    // Vector of MatchSpec, and last successful package match.
-    dependencies: Vec<PackageDependency<'a>>,
 }
 
 pub struct PackageRelations<'a> {
+    package_dependencies: HashMap<&'a str, HashMap<&'a str, PackageDependency<'a>>>,
     // Sorted by filename. Implies also sorted by packagename.
     // this allows us to use a range system to define packages.
     package_metadatas: Vec<PackageMetadata<'a>>,
     filename_to_metadata: HashMap<&'a str, PkgIdx>,
     // Package Name -> (Start Index, End Index)
     package_name_to_providers: HashMap<&'a str, (PkgIdx, PkgIdxOffset)>,
-    // When eliminating a package, we'll want to go "upstream"
-    // to eliminate packages whose dependencies may no longer
-    // be satisified.
-    package_name_to_consumers: HashMap<&'a str, HashSet<&'a str>>,
+    // TODO
     // Lazy-populated when a matchspec that matches on build hash is found.
     //package_name_build_to_providers: HashMap<(&'a str, &'a str), Vec<bool>>,
 }
@@ -104,10 +133,10 @@ impl<'a> PackageRelations<'a> {
     pub fn new() -> Self {
         const CAPACITY: usize = 768 * 1024;
         PackageRelations {
+            package_dependencies: HashMap::new(),
             package_metadatas: Vec::with_capacity(CAPACITY),
             filename_to_metadata: HashMap::with_capacity(CAPACITY),
             package_name_to_providers: HashMap::with_capacity(CAPACITY),
-            package_name_to_consumers: HashMap::with_capacity(CAPACITY),
         }
     }
 
@@ -117,45 +146,47 @@ impl<'a> PackageRelations<'a> {
         filename: &'a str,
         package_record: &'a PackageRecord,
     ) {
-        let mut dependencies = Vec::with_capacity(package_record.depends.len());
         let package_name = package_record.name.as_source();
-        for depend in &package_record.depends {
-            let dependency_name = depend.split_whitespace().next().unwrap();
-            let matchspec = if dependency_name.len() == depend.len() {
-                matchspec_cache.get_or_insert("")
-            } else {
-                matchspec_cache.get_or_insert(&depend[dependency_name.len() + 1..])
-            };
-            let matchspec = matchspec.expect(filename);
-            dependencies.push(PackageDependency {
-                name: dependency_name,
-                matchspec,
-                last_successful_resolution: None,
-            });
-            self.package_name_to_consumers
-                .entry(dependency_name)
-                .or_default()
-                .insert(package_name);
-        }
-
         self.package_metadatas.push(PackageMetadata {
             removed: false,
             filename,
             package_record,
-            dependencies,
         });
-        let index = u32::try_from(self.package_metadatas.len() - 1).expect("too many packages");
-
-        self.filename_to_metadata.insert(filename, PkgIdx { index });
-        if index == 0 {
+        let index = PkgIdx {
+            index: u32::try_from(self.package_metadatas.len() - 1).expect("too many packages"),
+        };
+        if index.index == 0 {
             self.package_name_to_providers
-                .insert(package_name, (PkgIdx { index }, PkgIdxOffset { offset: 1 }));
+                .insert(package_name, (index, PkgIdxOffset { offset: 1 }));
         } else {
             let value = self
                 .package_name_to_providers
                 .entry(package_name)
-                .or_insert((PkgIdx { index }, PkgIdxOffset { offset: 0 }));
+                .or_insert((index, PkgIdxOffset { offset: 0 }));
             value.1.offset += 1;
+        }
+        self.filename_to_metadata.insert(filename, index);
+
+        for depend in &package_record.depends {
+            let (dependency_name, dependency_spec) = dependsstr_to_name_and_spec(depend);
+            let matchspec = matchspec_cache
+                .get_or_insert(dependency_spec)
+                .expect(depend);
+
+            let dependency = self
+                .package_dependencies
+                .entry(dependency_name)
+                .or_insert_with(HashMap::new)
+                .entry(dependency_spec)
+                .or_insert_with(|| PackageDependency {
+                    unsatisfiable: false,
+                    name: dependency_name,
+                    matchspec,
+                    matchspec_string: dependency_spec,
+                    last_successful_resolution: None,
+                    dependers: Vec::new(),
+                });
+            dependency.dependers.push(index);
         }
     }
 
@@ -304,6 +335,17 @@ impl<'a> PackageRelations<'a> {
         result
     }
 
+    fn get_dependencies(&self, index: usize) -> impl Iterator<Item = &PackageDependency<'a>> {
+        self.package_metadatas[index]
+            .package_record
+            .depends
+            .iter()
+            .map(|depend| {
+                let (dependency_name, dependency_spec) = dependsstr_to_name_and_spec(depend);
+                return &self.package_dependencies[dependency_name][dependency_spec];
+            })
+    }
+
     pub fn apply_must_compatible(
         &mut self,
         package_name: &'a str,
@@ -321,14 +363,14 @@ impl<'a> PackageRelations<'a> {
             return result;
         }
         let index = index.unwrap();
-        for dependency in &self.package_metadatas[index].dependencies {
+        for dependency in self.get_dependencies(index) {
             relevant_packages.insert(dependency.name);
             relevant_matchspecs.insert(dependency.name, HashSet::from([dependency.matchspec]));
         }
 
         for index in range {
             let mut local_relevant_packages = HashSet::new();
-            for dependency in &self.package_metadatas[index].dependencies {
+            for dependency in self.get_dependencies(index) {
                 let name = dependency.name;
                 if let Some(specs) = relevant_matchspecs.get_mut(name) {
                     specs.insert(dependency.matchspec);
@@ -374,51 +416,54 @@ impl<'a> PackageRelations<'a> {
         depending_ons: Vec<&'a str>,
     ) -> Vec<RemovedUnsatisfiableLog<'a>> {
         let updates: Vec<Evaluation> = depending_ons
-            .into_par_iter()
-            .filter_map(|depending_on| {
-                self.package_name_to_consumers
-                    .get(depending_on)
-                    .map(|package_names| (package_names, depending_on))
-            })
-            .flat_map(|(package_names, depending_on)| {
-                package_names.into_par_iter().flat_map(|package_name| {
-                    self.mkrange(package_name)
-                        .into_par_iter()
-                        //.into_iter()
-                        .filter_map(|package_index| self.evaluate(depending_on, package_index))
-                })
-            })
+            .par_iter()
+            .filter_map(|depending_on| self.package_dependencies.get(depending_on))
+            .flat_map(|dependencies| dependencies)
+            .filter(|(_, dependency)| !dependency.unsatisfiable)
+            .flat_map(|(_, dependency)| self.evaluate(dependency))
             .collect();
         let mut result = Vec::with_capacity(updates.len());
         for evaluation in updates {
             match evaluation {
-                Evaluation::UpdateSolution((package_index, dependency_index, offset)) => {
-                    self.package_metadatas[package_index.index()].dependencies[dependency_index]
+                Evaluation::UpdateSolution(dep_key, offset) => {
+                    self.package_dependencies
+                        .get_mut(dep_key.name)
+                        .unwrap()
+                        .get_mut(dep_key.matchspec)
+                        .unwrap()
                         .last_successful_resolution = Some(offset);
                 }
-                Evaluation::RemoveAndLog((package_index, log_entry)) => {
-                    self.package_metadatas[package_index.index()].removed = true;
-                    result.push(log_entry);
+                Evaluation::RemoveAndLog(dep_key, offset) => {
+                    let dependency = &mut self
+                        .package_dependencies
+                        .get_mut(dep_key.name)
+                        .unwrap()
+                        .get_mut(dep_key.matchspec)
+                        .unwrap();
+                    dependency.unsatisfiable = true;
+                    for index in &dependency.dependers {
+                        let package = self
+                            .package_metadatas
+                            .get_mut(index.index as usize)
+                            .unwrap();
+                        package.removed = true;
+                        result.push(RemovedUnsatisfiableLog {
+                            dependency_package_name: dependency.name,
+                            filename: package.filename,
+                            package_name: package.package_record.name.as_source(),
+                            matchspec: dependency.matchspec,
+                            cause_filename: offset
+                                .map(|index| self.package_metadatas[index.index as usize].filename),
+                        });
+                    }
                 }
             }
         }
         result
     }
 
-    fn evaluate(&self, depending_on: &str, package_index: usize) -> Option<Evaluation<'a>> {
-        // Is this package already removed?
-        if self.package_metadatas[package_index].removed {
-            return None; // Yes, it is
-        }
-        // Does this package depend on our search criteria?
-        let depfind = &self.package_metadatas[package_index]
-            .dependencies
-            .iter()
-            .enumerate()
-            .find(|(_, d)| d.name == depending_on);
-        if depfind.is_none() {
-            return None; // No, it does not.
-        }
+    fn evaluate(&self, dependency: &PackageDependency<'a>) -> Option<Evaluation<'a>> {
+        let depending_on = dependency.name;
         let (candidates_start, candidates_end_offset) = {
             if let Some(result) = self.package_name_to_providers.get(depending_on) {
                 *result
@@ -432,7 +477,6 @@ impl<'a> PackageRelations<'a> {
             }
         };
         // Does this dependency have the same solution as before?
-        let (dependency_index, dependency) = depfind.unwrap();
         let last_successful_resolution = dependency.last_successful_resolution;
         if let Some(offset) = last_successful_resolution {
             let last_solution_index = candidates_start.index() + offset.offset();
@@ -453,13 +497,10 @@ impl<'a> PackageRelations<'a> {
         if let Some(new_solution_index) = new_solution_index {
             // Yes, there is a solution. Save the solution in
             // case we need to return to this dependency later.
-            return Some(Evaluation::UpdateSolution((
-                PkgIdx {
-                    index: u32::try_from(package_index).unwrap(),
-                },
-                dependency_index,
+            return Some(Evaluation::UpdateSolution(
+                dependency.make_key(),
                 PkgIdxOffset::from_difference(candidates_start, new_solution_index),
-            )));
+            ));
         }
 
         // There is no solution.
@@ -476,19 +517,11 @@ impl<'a> PackageRelations<'a> {
             ),
         };
 
-        let md = &self.package_metadatas[package_index];
-        return Some(Evaluation::RemoveAndLog((
-            PkgIdx {
-                index: u32::try_from(package_index).unwrap(),
-            },
-            RemovedUnsatisfiableLog {
-                filename: md.filename,
-                package_name: md.package_record.name.as_source(),
-                dependency_package_name: dependency.name,
-                matchspec: dependency.matchspec,
-                cause_filename: cause_of_removal_index
-                    .map(|index| self.package_metadatas[index].filename),
-            },
-        )));
+        return Some(Evaluation::RemoveAndLog(
+            dependency.make_key(),
+            cause_of_removal_index.map(|index| PkgIdx {
+                index: index as u32,
+            }),
+        ));
     }
 }
