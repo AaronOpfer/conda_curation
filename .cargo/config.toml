@@ -8,3 +8,12 @@ rraa = "run --release -- -F pypy -C python matchspecs/secure_python.yaml"
 # "Run Debug All Architectures"
 rdaa = "run -- -F pypy -C python matchspecs/secure_python.yaml"
 
+
+# "Cached Run Release"
+crr = "run --release -- --offline -F pypy -C python -a linux-64 matchspecs/secure_python.yaml"
+# "Cached Run Debug"
+crd = "run -- --offline -F pypy -C python -a linux-64 matchspecs/secure_python.yaml"
+# "Cached Run Release All Architectures"
+crraa = "run --release -- --offline -F pypy -C python matchspecs/secure_python.yaml"
+# "Cached Run Debug All Architectures"
+crdaa = "run -- --ofline -F pypy -C python matchspecs/secure_python.yaml"
