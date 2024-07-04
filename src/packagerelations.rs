@@ -416,7 +416,7 @@ impl<'a> PackageRelations<'a> {
         depending_ons: Vec<&'a str>,
     ) -> Vec<RemovedUnsatisfiableLog<'a>> {
         let updates: Vec<Evaluation> = depending_ons
-            .iter()
+            .into_par_iter()
             .filter_map(|depending_on| {
                 self.package_dependencies
                     .get(depending_on)
@@ -424,7 +424,7 @@ impl<'a> PackageRelations<'a> {
             })
             .flat_map(|(dependency_name, dependencies)| {
                 dependencies
-                    .iter()
+                    .par_iter()
                     .filter_map(|(matchspec_str, dependency)| {
                         if dependency.unsatisfiable {
                             None
