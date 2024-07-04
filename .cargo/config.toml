@@ -16,4 +16,4 @@ crd = "run -- --offline -F pypy -C python -a linux-64 matchspecs/secure_python.y
 # "Cached Run Release All Architectures"
 crraa = "run --release -- --offline -F pypy -C python matchspecs/secure_python.yaml"
 # "Cached Run Debug All Architectures"
-crdaa = "run -- --ofline -F pypy -C python matchspecs/secure_python.yaml"
+crdaa = "run -- --offline -F pypy -C python matchspecs/secure_python.yaml"
