@@ -82,25 +82,12 @@ fn wrap_range_from_middle(
 struct PackageDependency<'a> {
     /// If Set, this dependency is permanently unsatisfiable
     unsatisfiable: bool,
-    /// What package do we depend on?
-    name: &'a str,
-    /// What is the original matchspec string?
-    matchspec_string: &'a str,
     /// What is the matchspec?
     matchspec: &'a NamelessMatchSpec,
     /// What package satisfied this dependency previously (if any)?
     last_successful_resolution: Option<PkgIdxOffset>,
     /// What packages contain this dependency?
     dependers: Vec<PkgIdx>,
-}
-
-impl<'a> PackageDependency<'a> {
-    fn make_key(&self) -> DependencyKey<'a> {
-        return DependencyKey {
-            name: self.name,
-            matchspec: self.matchspec_string,
-        };
-    }
 }
 
 struct PackageMetadata<'a> {
@@ -190,9 +177,7 @@ impl<'a> PackageRelations<'a> {
                 .entry(dependency_spec)
                 .or_insert_with(|| PackageDependency {
                     unsatisfiable: false,
-                    name: dependency_name,
                     matchspec,
-                    matchspec_string: dependency_spec,
                     last_successful_resolution: None,
                     dependers: Vec::new(),
                 });
@@ -345,14 +330,20 @@ impl<'a> PackageRelations<'a> {
         result
     }
 
-    fn get_dependencies(&self, index: usize) -> impl Iterator<Item = &PackageDependency<'a>> {
+    fn get_dependencies(
+        &self,
+        index: usize,
+    ) -> impl Iterator<Item = (&'a str, &PackageDependency<'a>)> {
         self.package_metadatas[index]
             .package_record
             .depends
             .iter()
             .map(|depend| {
                 let (dependency_name, dependency_spec) = dependsstr_to_name_and_spec(depend);
-                return &self.package_dependencies[dependency_name][dependency_spec];
+                return (
+                    dependency_name,
+                    &self.package_dependencies[dependency_name][dependency_spec],
+                );
             })
     }
 
@@ -373,15 +364,14 @@ impl<'a> PackageRelations<'a> {
             return result;
         }
         let index = index.unwrap();
-        for dependency in self.get_dependencies(index) {
-            relevant_packages.insert(dependency.name);
-            relevant_matchspecs.insert(dependency.name, HashSet::from([dependency.matchspec]));
+        for (name, dependency) in self.get_dependencies(index) {
+            relevant_packages.insert(name);
+            relevant_matchspecs.insert(name, HashSet::from([dependency.matchspec]));
         }
 
         for index in range {
             let mut local_relevant_packages = HashSet::new();
-            for dependency in self.get_dependencies(index) {
-                let name = dependency.name;
+            for (name, dependency) in self.get_dependencies(index) {
                 if let Some(specs) = relevant_matchspecs.get_mut(name) {
                     specs.insert(dependency.matchspec);
                     local_relevant_packages.insert(name);
@@ -426,11 +416,29 @@ impl<'a> PackageRelations<'a> {
         depending_ons: Vec<&'a str>,
     ) -> Vec<RemovedUnsatisfiableLog<'a>> {
         let updates: Vec<Evaluation> = depending_ons
-            .par_iter()
-            .filter_map(|depending_on| self.package_dependencies.get(depending_on))
-            .flat_map(|dependencies| dependencies)
-            .filter(|(_, dependency)| !dependency.unsatisfiable)
-            .flat_map(|(_, dependency)| self.evaluate(dependency))
+            .iter()
+            .filter_map(|depending_on| {
+                self.package_dependencies
+                    .get(depending_on)
+                    .map(|d| (depending_on, d))
+            })
+            .flat_map(|(dependency_name, dependencies)| {
+                dependencies
+                    .iter()
+                    .filter_map(|(matchspec_str, dependency)| {
+                        if dependency.unsatisfiable {
+                            None
+                        } else {
+                            self.evaluate(
+                                DependencyKey {
+                                    name: dependency_name,
+                                    matchspec: matchspec_str,
+                                },
+                                dependency,
+                            )
+                        }
+                    })
+            })
             .collect();
         let mut result = Vec::with_capacity(updates.len());
         for evaluation in updates {
@@ -458,7 +466,7 @@ impl<'a> PackageRelations<'a> {
                             .unwrap();
                         package.removed = true;
                         result.push(RemovedUnsatisfiableLog {
-                            dependency_package_name: dependency.name,
+                            dependency_package_name: dep_key.name,
                             filename: package.filename,
                             package_name: package.package_record.name.as_source(),
                             matchspec: dependency.matchspec,
@@ -472,10 +480,13 @@ impl<'a> PackageRelations<'a> {
         result
     }
 
-    fn evaluate(&self, dependency: &PackageDependency<'a>) -> Option<Evaluation<'a>> {
-        let depending_on = dependency.name;
+    fn evaluate(
+        &self,
+        dependency_key: DependencyKey<'a>,
+        dependency: &PackageDependency<'a>,
+    ) -> Option<Evaluation<'a>> {
         let (candidates_start, candidates_end_offset) = {
-            if let Some(result) = self.package_name_to_providers.get(depending_on) {
+            if let Some(result) = self.package_name_to_providers.get(dependency_key.name) {
                 *result
             } else {
                 (
@@ -508,7 +519,7 @@ impl<'a> PackageRelations<'a> {
             // Yes, there is a solution. Save the solution in
             // case we need to return to this dependency later.
             return Some(Evaluation::UpdateSolution(
-                dependency.make_key(),
+                dependency_key,
                 PkgIdxOffset::from_difference(candidates_start, new_solution_index),
             ));
         }
@@ -528,7 +539,7 @@ impl<'a> PackageRelations<'a> {
         };
 
         return Some(Evaluation::RemoveAndLog(
-            dependency.make_key(),
+            dependency_key,
             cause_of_removal_index.map(|index| PkgIdx {
                 index: index as u32,
             }),
