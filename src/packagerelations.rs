@@ -325,7 +325,19 @@ impl<'a> PackageRelations<'a> {
         result
     }
 
-    pub fn apply_matchspecs(
+    pub fn apply_user_matchspecs(
+        &mut self,
+        user_matchspecs: &HashMap<String, Vec<NamelessMatchSpec>>,
+    ) -> Vec<RemovedByUserLog<'a>> {
+        let mut result = Vec::new();
+        for (package_name, specs) in user_matchspecs {
+            let spec_arg: Vec<&NamelessMatchSpec> = specs.iter().collect();
+            result.append(&mut (self.apply_matchspecs(package_name, &spec_arg)));
+        }
+        result
+    }
+
+    fn apply_matchspecs(
         &mut self,
         package_name: &str,
         specs: &[&NamelessMatchSpec],

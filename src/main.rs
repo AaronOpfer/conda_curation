@@ -3,6 +3,7 @@ use conda_curation::matchspecyaml::get_user_matchspecs;
 use conda_curation::packagerelations::PackageRelations;
 use conda_curation::rawrepodata;
 use conda_curation::rawrepodata::filtered_repodata_to_file;
+
 use rattler_conda_types::RepoData;
 use std::collections::HashSet;
 use std::time::Instant;
@@ -175,7 +176,33 @@ async fn main() {
         &args.channel_alias,
     )
     .expect("Failed writing noarch repodata to file");
-    Ok(())
+}
+
+#[inline]
+fn perform_round<'a, F, S, L>(
+    label: S,
+    action: F,
+    removed_filenames: &mut HashSet<&'a str>,
+    removed_package_names: &mut HashSet<&'a str>,
+    explain: bool,
+) where
+    S: std::fmt::Display,
+    L: conda_curation::logs::Log<'a>,
+    F: FnOnce() -> Vec<L>,
+{
+    let start = Instant::now();
+    let mut removal_count = 0;
+    for log_entry in action() {
+        if removed_filenames.insert(log_entry.filename()) {
+            removal_count += 1;
+            if explain {
+                println!("{log_entry}");
+            }
+            removed_package_names.insert(log_entry.package_name());
+        }
+    }
+    let duration = start.elapsed().as_secs_f64();
+    println!("{label:>15}: - {removal_count:>7} ({duration:>2.7}s)");
 }
 
 fn filter_repodata<'a>(
@@ -204,72 +231,34 @@ fn filter_repodata<'a>(
 
     let mut removed_filenames = HashSet::new();
     let mut next_round = HashSet::new();
-    {
-        let start = Instant::now();
-        let mut removal_count = 0;
-        for (package_name, user_matchspecs) in user_matchspecs {
-            next_round.insert(package_name.as_str());
-            let spec_arg: Vec<&rattler_conda_types::NamelessMatchSpec> =
-                user_matchspecs.iter().collect();
-            for log_entry in relations.apply_matchspecs(package_name, &spec_arg) {
-                if removed_filenames.insert(log_entry.filename) {
-                    removal_count += 1;
-                    if args.explain {
-                        println!("{log_entry}");
-                    }
-                }
-            }
-        }
-        let duration = start.elapsed().as_secs_f64();
-        println!("user matchspecs: - {removal_count:>7} ({duration:>2.7}s)");
-    }
-    {
-        let start = Instant::now();
-        let mut removal_count = 0;
-        for log_entry in relations.apply_build_prune() {
-            if removed_filenames.insert(log_entry.filename) {
-                removal_count += 1;
-                if args.explain {
-                    println!("{log_entry}");
-                }
-            }
-            next_round.insert(log_entry.package_name);
-        }
-        let duration = start.elapsed().as_secs_f64();
-        println!("     old builds: - {removal_count:>7} ({duration:>2.7}s)");
-    }
-    {
-        let start = Instant::now();
-        let mut removal_count = 0;
-        for log_entry in relations.apply_feature_removal(banned_features) {
-            if removed_filenames.insert(log_entry.filename) {
-                removal_count += 1;
-                if args.explain {
-                    println!("{log_entry}");
-                }
-            }
-            next_round.insert(log_entry.package_name);
-        }
-        let duration = start.elapsed().as_secs_f64();
-        println!("       features: - {removal_count:>7} ({duration:>2.7}s)");
-    }
-
-    {
-        let start = Instant::now();
-        let mut removal_count = 0;
-        for log_entry in relations.apply_dev_rc_ban(args.ban_dev, args.ban_rc) {
-            if removed_filenames.insert(log_entry.filename) {
-                removal_count += 1;
-                if args.explain {
-                    println!("{log_entry}");
-                }
-            }
-            next_round.insert(log_entry.package_name);
-        }
-        let duration = start.elapsed().as_secs_f64();
-        println!("       dev & rc: - {removal_count:>7} ({duration:>2.7}s)");
-    }
-
+    perform_round(
+        "user matchspecs",
+        || relations.apply_user_matchspecs(user_matchspecs),
+        &mut removed_filenames,
+        &mut next_round,
+        args.explain,
+    );
+    perform_round(
+        "old builds",
+        || relations.apply_build_prune(),
+        &mut removed_filenames,
+        &mut next_round,
+        args.explain,
+    );
+    perform_round(
+        "features",
+        || relations.apply_feature_removal(banned_features),
+        &mut removed_filenames,
+        &mut next_round,
+        args.explain,
+    );
+    perform_round(
+        "dev & rc",
+        || relations.apply_dev_rc_ban(args.ban_dev, args.ban_rc),
+        &mut removed_filenames,
+        &mut next_round,
+        args.explain,
+    );
     unresolveable(
         &mut relations,
         &mut removed_filenames,
@@ -278,19 +267,13 @@ fn filter_repodata<'a>(
     );
 
     for package_name in &args.must_compatible {
-        let start = Instant::now();
-        let mut removal_count = 0;
-        for log_entry in relations.apply_must_compatible(package_name) {
-            if removed_filenames.insert(log_entry.filename) {
-                removal_count += 1;
-                if args.explain {
-                    println!("{log_entry}");
-                }
-            }
-            next_round.insert(log_entry.package_name);
-        }
-        let duration = start.elapsed().as_secs_f64();
-        println!("  compat {package_name}: - {removal_count:>7} ({duration:>2.7}s)");
+        perform_round(
+            format!("compat {package_name}"),
+            || relations.apply_must_compatible(package_name),
+            &mut removed_filenames,
+            &mut next_round,
+            args.explain,
+        );
         unresolveable(
             &mut relations,
             &mut removed_filenames,
@@ -319,28 +302,18 @@ fn unresolveable<'a>(
     let mut round = 0;
     let mut next_round: HashSet<&'a str> = test_set.clone();
     while !next_round.is_empty() {
-        let start = Instant::now();
         round += 1;
-        let mut removal_count = 0;
         let this_round = next_round.clone();
         next_round.clear();
-
-        let mut round_logs = relations.find_unresolveables(this_round.into_iter().collect());
-        removal_count += round_logs.len();
-        for log_entry in &round_logs {
-            if removed_filenames.insert(log_entry.filename) {
-                removal_count += 1;
-                if explain {
-                    println!("{log_entry}");
-                }
-            }
-            next_round.insert(log_entry.package_name);
-        }
-        round_logs.sort_unstable_by_key(|l| l.filename);
+        perform_round(
+            format!("No Sln Round {round}"),
+            || relations.find_unresolveables(this_round.into_iter().collect()),
+            removed_filenames,
+            &mut next_round,
+            explain,
+        );
         if next_round.is_empty() {
             break;
         }
-        let duration = start.elapsed().as_secs_f64();
-        println!(" No Sln Round {round}: - {removal_count:>7} ({duration:>2.7}s)");
     }
 }

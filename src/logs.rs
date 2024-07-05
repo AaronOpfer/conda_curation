@@ -1,5 +1,10 @@
 use rattler_conda_types::{BuildNumber, NamelessMatchSpec};
 
+pub trait Log<'a>: std::fmt::Display {
+    fn filename(&self) -> &'a str;
+    fn package_name(&self) -> &'a str;
+}
+
 /// Log item for when a package is removed because of a dependency no longer being satsifiable.
 /// Includes the filename of a package that was removed which would have satisfied the test if it
 /// still existed, if there is such a package.
@@ -95,3 +100,17 @@ impl<'a> std::fmt::Display for RemovedWithFeatureLog<'a> {
         )
     }
 }
+
+macro_rules! impl_Log {
+    (for $($t:ty),+) => {
+        $(impl<'a> Log<'a> for $t {
+            fn filename(&self) -> &'a str {
+                self.filename
+            }
+            fn package_name(&self) -> &'a str {
+                self.package_name
+            }
+        })*
+    }
+}
+impl_Log!(for RemovedWithFeatureLog<'a>, RemovedByDevRcPolicyLog<'a>, RemovedUnsatisfiableLog<'a>, RemovedBecauseIncompatibleLog<'a>, RemovedBySupercedingBuildLog<'a>, RemovedByUserLog<'a>);
