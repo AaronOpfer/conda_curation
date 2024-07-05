@@ -80,7 +80,7 @@ struct Cli {
     matchspecs_yaml: std::path::PathBuf,
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     let mut args = Cli::parse();
     if !args.channel_alias.ends_with('/') {
