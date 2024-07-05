@@ -23,6 +23,7 @@ missing-errors-doc = "allow"
 missing-panics-doc = "allow"
 
 [dependencies]
+bitvec = "1.0.1"
 clap = { version = "4.5.4", features = ["derive"] }
 futures = "0.3.30"
 fxhash = "0.2.1"

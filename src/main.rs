@@ -184,6 +184,7 @@ fn filter_repodata<'a>(
     {
         relations.insert(matchspec_cache, package_filename, package_record);
     }
+    relations.shrink_to_fit();
     let (package_count, package_name_count, edges) = relations.stats();
     println!(
         "  package count:   {package_count:>7} ({package_name_count} unique names, {edges} edges)"

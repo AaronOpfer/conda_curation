@@ -3,6 +3,7 @@ use crate::logs::{
     RemovedByUserLog, RemovedUnsatisfiableLog, RemovedWithFeatureLog,
 };
 use crate::matchspeccache::MatchspecCache;
+use bitvec::vec::BitVec;
 use itertools::Itertools;
 use rattler_conda_types::{NamelessMatchSpec, PackageRecord};
 use rayon::prelude::*;
@@ -91,12 +92,12 @@ struct PackageDependency<'a> {
 }
 
 struct PackageMetadata<'a> {
-    removed: bool,
     filename: &'a str,
     package_record: &'a PackageRecord,
 }
 
 pub struct PackageRelations<'a> {
+    removed: BitVec,
     package_dependencies: HashMap<&'a str, HashMap<&'a str, PackageDependency<'a>>>,
     // Sorted by filename. Implies also sorted by packagename.
     // this allows us to use a range system to define packages.
@@ -121,6 +122,7 @@ impl<'a> PackageRelations<'a> {
         const VERSIONS_CAPACITY: usize = 768 * 1024;
         const PROVIDERS_CAPACITY: usize = 32 * 1024;
         PackageRelations {
+            removed: bitvec::vec::BitVec::with_capacity(VERSIONS_CAPACITY),
             package_dependencies: HashMap::with_capacity(PROVIDERS_CAPACITY),
             package_metadatas: Vec::with_capacity(VERSIONS_CAPACITY),
             filename_to_metadata: HashMap::with_capacity(VERSIONS_CAPACITY),
@@ -145,10 +147,10 @@ impl<'a> PackageRelations<'a> {
     ) {
         let package_name = package_record.name.as_source();
         self.package_metadatas.push(PackageMetadata {
-            removed: false,
             filename,
             package_record,
         });
+        self.removed.push(false);
         let index = PkgIdx {
             index: u32::try_from(self.package_metadatas.len() - 1).expect("too many packages"),
         };
@@ -185,6 +187,17 @@ impl<'a> PackageRelations<'a> {
         }
     }
 
+    pub fn shrink_to_fit(&mut self) {
+        self.removed.shrink_to_fit();
+        self.package_metadatas.shrink_to_fit();
+        self.filename_to_metadata.shrink_to_fit();
+        self.package_name_to_providers.shrink_to_fit();
+        self.package_dependencies.shrink_to_fit();
+        for matchspec_map in self.package_dependencies.values_mut() {
+            matchspec_map.shrink_to_fit();
+        }
+    }
+
     pub fn apply_build_prune(&mut self) -> Vec<RemovedBySupercedingBuildLog<'a>> {
         let mut result = Vec::new();
         for (_, packages) in &self.package_metadatas[..].iter().chunk_by(|pkg| {
@@ -212,7 +225,8 @@ impl<'a> PackageRelations<'a> {
             }
         }
         for res in &result {
-            self.package_metadatas[self.filename_to_metadata[res.filename].index()].removed = true;
+            self.removed
+                .set(self.filename_to_metadata[res.filename].index(), true);
         }
         result
     }
@@ -251,7 +265,8 @@ impl<'a> PackageRelations<'a> {
             })
             .collect();
         for res in &result {
-            self.package_metadatas[self.filename_to_metadata[res.filename].index()].removed = true;
+            self.removed
+                .set(self.filename_to_metadata[res.filename].index(), true);
         }
         result
     }
@@ -292,7 +307,8 @@ impl<'a> PackageRelations<'a> {
             })
             .collect();
         for res in &result {
-            self.package_metadatas[self.filename_to_metadata[res.filename].index()].removed = true;
+            self.removed
+                .set(self.filename_to_metadata[res.filename].index(), true);
         }
         result
     }
@@ -304,10 +320,11 @@ impl<'a> PackageRelations<'a> {
     ) -> Vec<RemovedByUserLog<'a>> {
         let mut result = Vec::new();
         if let Some((start, offset)) = self.package_name_to_providers.get(package_name) {
-            for md in &mut self.package_metadatas[start.range_to(*offset)] {
-                if md.removed {
+            for index in start.range_to(*offset) {
+                if self.removed[index] {
                     continue;
                 }
+                let md = &mut self.package_metadatas[index];
                 let mut passes = false;
 
                 // Determine if this package should no longer be here
@@ -319,7 +336,7 @@ impl<'a> PackageRelations<'a> {
                 }
 
                 if !passes {
-                    md.removed = true;
+                    self.removed.set(index, true);
                     result.push(RemovedByUserLog {
                         package_name: md.package_record.name.as_source(),
                         filename: md.filename,
@@ -355,7 +372,7 @@ impl<'a> PackageRelations<'a> {
 
         let mut range = self
             .mkrange(package_name)
-            .filter(|index| !self.package_metadatas[*index].removed);
+            .filter(|index| !self.removed[*index]);
 
         let mut relevant_packages = HashSet::new();
         let mut relevant_matchspecs = HashMap::new();
@@ -464,7 +481,7 @@ impl<'a> PackageRelations<'a> {
                             .package_metadatas
                             .get_mut(index.index as usize)
                             .unwrap();
-                        package.removed = true;
+                        self.removed.set(index.index as usize, true);
                         result.push(RemovedUnsatisfiableLog {
                             dependency_package_name: dep_key.name,
                             filename: package.filename,
@@ -501,7 +518,7 @@ impl<'a> PackageRelations<'a> {
         let last_successful_resolution = dependency.last_successful_resolution;
         if let Some(offset) = last_successful_resolution {
             let last_solution_index = candidates_start.index() + offset.offset();
-            if !self.package_metadatas[last_solution_index].removed {
+            if !self.removed[last_solution_index] {
                 return None; // Yes, it does.
             }
         }
@@ -512,8 +529,10 @@ impl<'a> PackageRelations<'a> {
             last_successful_resolution,
         )
         .find(|index| {
-            let md = &self.package_metadatas[*index];
-            !md.removed && dependency.matchspec.matches(md.package_record)
+            !self.removed[*index]
+                && dependency
+                    .matchspec
+                    .matches(self.package_metadatas[*index].package_record)
         });
         if let Some(new_solution_index) = new_solution_index {
             // Yes, there is a solution. Save the solution in
@@ -532,8 +551,10 @@ impl<'a> PackageRelations<'a> {
             // We need to find the previous package that satisfied
             None => wrap_range_from_middle(candidates_start, candidates_end_offset, None).find(
                 |index| {
-                    let md = &self.package_metadatas[*index];
-                    md.removed && dependency.matchspec.matches(md.package_record)
+                    self.removed[*index]
+                        && dependency
+                            .matchspec
+                            .matches(self.package_metadatas[*index].package_record)
                 },
             ),
         };
