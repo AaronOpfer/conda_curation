@@ -26,11 +26,21 @@ enum Evaluation<'a> {
 struct PkgIdx {
     index: u32,
 }
+
 impl PkgIdx {
+    #[must_use]
+    fn from_usize(value: usize) -> Self {
+        PkgIdx {
+            index: u32::try_from(value).unwrap(),
+        }
+    }
+
+    #[must_use]
     fn index(self) -> usize {
         self.index as usize
     }
 
+    #[must_use]
     fn range_to(self, offset: PkgIdxOffset) -> Range<usize> {
         self.index()..self.index() + offset.offset()
     }
@@ -58,7 +68,8 @@ impl PkgIdxOffset {
     }
 }
 
-fn dependsstr_to_name_and_spec<'a>(depend: &'a str) -> (&'a str, &'a str) {
+#[must_use]
+fn dependsstr_to_name_and_spec(depend: &str) -> (&str, &str) {
     let dependency_name = depend.split_whitespace().next().unwrap();
     let dependency_spec = if dependency_name.len() == depend.len() {
         ""
@@ -130,8 +141,9 @@ impl<'a> PackageRelations<'a> {
         }
     }
 
+    #[must_use]
     pub fn stats(&self) -> (usize, usize, usize) {
-        let edges = self.package_dependencies.values().map(|d| d.len()).sum();
+        let edges = self.package_dependencies.values().map(HashMap::len).sum();
         (
             self.package_metadatas.len(),
             self.package_dependencies.len(),
@@ -175,7 +187,7 @@ impl<'a> PackageRelations<'a> {
             let dependency = self
                 .package_dependencies
                 .entry(dependency_name)
-                .or_insert_with(HashMap::new)
+                .or_default()
                 .entry(dependency_spec)
                 .or_insert_with(|| PackageDependency {
                     unsatisfiable: false,
@@ -357,10 +369,10 @@ impl<'a> PackageRelations<'a> {
             .iter()
             .map(|depend| {
                 let (dependency_name, dependency_spec) = dependsstr_to_name_and_spec(depend);
-                return (
+                (
                     dependency_name,
                     &self.package_dependencies[dependency_name][dependency_spec],
-                );
+                )
             })
     }
 
@@ -469,7 +481,7 @@ impl<'a> PackageRelations<'a> {
                         .last_successful_resolution = Some(offset);
                 }
                 Evaluation::RemoveAndLog(dep_key, offset) => {
-                    let dependency = &mut self
+                    let dependency = self
                         .package_dependencies
                         .get_mut(dep_key.name)
                         .unwrap()
@@ -477,11 +489,8 @@ impl<'a> PackageRelations<'a> {
                         .unwrap();
                     dependency.unsatisfiable = true;
                     for index in &dependency.dependers {
-                        let package = self
-                            .package_metadatas
-                            .get_mut(index.index as usize)
-                            .unwrap();
-                        self.removed.set(index.index as usize, true);
+                        let package = self.package_metadatas.get_mut(index.index()).unwrap();
+                        self.removed.set(index.index(), true);
                         result.push(RemovedUnsatisfiableLog {
                             dependency_package_name: dep_key.name,
                             filename: package.filename,
@@ -506,12 +515,7 @@ impl<'a> PackageRelations<'a> {
             if let Some(result) = self.package_name_to_providers.get(dependency_key.name) {
                 *result
             } else {
-                (
-                    PkgIdx {
-                        index: self.package_metadatas.len() as u32,
-                    },
-                    PkgIdxOffset { offset: 0 },
-                )
+                (PkgIdx { index: u32::MAX }, PkgIdxOffset { offset: 0 })
             }
         };
         // Does this dependency have the same solution as before?
@@ -561,9 +565,7 @@ impl<'a> PackageRelations<'a> {
 
         return Some(Evaluation::RemoveAndLog(
             dependency_key,
-            cause_of_removal_index.map(|index| PkgIdx {
-                index: index as u32,
-            }),
+            cause_of_removal_index.map(PkgIdx::from_usize),
         ));
     }
 }

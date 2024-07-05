@@ -2,6 +2,7 @@ use futures::{StreamExt, TryStreamExt};
 use rattler::default_cache_dir;
 use rattler_conda_types::{ChannelInfo, PackageRecord, RepoData};
 use rattler_repodata_gateway::fetch;
+use rattler_repodata_gateway::fetch::CacheResult;
 use reqwest::Client;
 use reqwest_middleware::ClientWithMiddleware;
 use std::fs;
@@ -36,7 +37,6 @@ pub async fn fetch_repodata(
                 let result =
                     fetch::fetch_repo_data(repodata_url.clone(), client, cache.clone(), opts, None)
                         .await;
-                use rattler_repodata_gateway::fetch::CacheResult;
                 result.map(|result| {
                     match &result.cache_result {
                         CacheResult::CacheHit | CacheResult::CacheHitAfterFetch => {}

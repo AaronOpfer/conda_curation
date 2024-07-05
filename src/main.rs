@@ -35,11 +35,27 @@ const ARCHITECTURES: &[&str] = &[
     "zos-z",
 ];
 
+fn architectures_parser(value: &str) -> Result<String, &'static str> {
+    if !value
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        Err("Invalid architecture. Must be alphanumeric with hyphen or underscores")
+    } else if value.is_empty() {
+        Err("cannot be an empty string")
+    } else if value == "noarch" {
+        Err("noarch may not be specified (it is included implicitly)")
+    } else {
+        Ok(value.to_string())
+    }
+}
+
 #[derive(Parser)]
 #[command(
     author = "Aaron Opfer",
     about = "Apply various filtering rules to remove packages from a Conda Channel in order to speed up downloads and solutions and/or enforce policy."
 )]
+#[allow(clippy::struct_excessive_bools, clippy::doc_markdown)]
 struct Cli {
     /// remove packages with this feature
     #[arg(short = 'F', long = "ban-feature", value_name = "FEATURE")]
@@ -75,7 +91,7 @@ struct Cli {
     output_directory: std::path::PathBuf,
     /// Which architectures to render index information for. If none are specified, will default to
     /// all architectures.
-    #[arg(short = 'a', long = "architecture")]
+    #[arg(short = 'a', long = "architecture", value_parser = architectures_parser)]
     architectures: Vec<String>,
     matchspecs_yaml: std::path::PathBuf,
 }
@@ -86,14 +102,9 @@ async fn main() {
     if !args.channel_alias.ends_with('/') {
         args.channel_alias += "/";
     }
-    if args.architectures.contains(&"noarch".to_string()) {
-        panic!("noarch does not need to be specified.");
-    }
     if args.architectures.is_empty() {
         args.architectures
             .extend(ARCHITECTURES.iter().map(|arch| (*arch).to_string()));
-    } else {
-        // TODO: Validate architectures are sane.
     }
     let args = args; // read-only for now on.
 
@@ -164,6 +175,7 @@ async fn main() {
         &args.channel_alias,
     )
     .expect("Failed writing noarch repodata to file");
+    Ok(())
 }
 
 fn filter_repodata<'a>(
