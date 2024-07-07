@@ -156,9 +156,10 @@ async fn main() {
             .expect("Error writing repodata to file");
             removed_filenames
         })
-        .reduce(|mut left, right| {
-            left.extend(right);
-            left
+        .reduce(|left, right| {
+            left.intersection(&right)
+                .copied()
+                .collect::<HashSet<&str>>()
         })
         .unwrap();
     // Rayon Version
