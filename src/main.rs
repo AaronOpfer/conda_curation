@@ -169,14 +169,27 @@ async fn main() {
     //})
     //.into_iter()
     //.collect();
+    let mut removed = std::collections::HashSet::new();
     filtered_repodata_to_file(
         &repodata_noarch,
         &args.output_directory,
-        |pkfn| !common_filtered_fns.contains(pkfn),
+        |pkfn| {
+            if common_filtered_fns.contains(pkfn) {
+                removed.insert(pkfn);
+                false
+            } else {
+                true
+            }
+        },
         "noarch",
         &args.channel_alias,
     )
     .expect("Failed writing noarch repodata to file");
+    println!(
+        "Noarch packages removed: {} of {}",
+        removed.len(),
+        repodata_noarch.packages.len() + repodata_noarch.conda_packages.len()
+    );
 }
 
 #[inline]

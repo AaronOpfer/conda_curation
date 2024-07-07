@@ -5,6 +5,8 @@ use rattler_repodata_gateway::fetch;
 use rattler_repodata_gateway::fetch::CacheResult;
 use reqwest::Client;
 use reqwest_middleware::ClientWithMiddleware;
+use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use url::Url;
@@ -61,25 +63,55 @@ pub async fn fetch_repodata(
     })
 }
 
-pub fn filtered_repodata_to_file(
-    initial: &RepoData,
+pub fn filtered_repodata_to_file<'a>(
+    initial: &'a RepoData,
     output_dir: &std::path::Path,
-    predicate: impl Fn(&str) -> bool,
+    mut predicate: impl FnMut(&'a str) -> bool,
     subdir: &str,
     possible_replacement_base_url: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // This is like the RepoData from Rattler, except is built out of references.
+    #[derive(Debug, Serialize)]
+    struct RefRepoData<'a> {
+        info: Option<ChannelInfo>,
+        packages: HashMap<&'a str, &'a PackageRecord>,
+        #[serde(rename = "packages.conda")]
+        conda_packages: HashMap<&'a str, &'a PackageRecord>,
+        removed: HashSet<&'a str>,
+        #[serde(rename = "repodata_version")]
+        version: Option<u64>,
+    }
+
     let mut filepath = output_dir.to_path_buf();
     filepath.push(subdir);
     fs::create_dir_all(&filepath).expect("Failed to create directory for arch");
     filepath.push("repodata.json");
     let filename = filepath;
 
-    let mut out = initial.clone();
-    out.packages
-        .retain(|package_filename, _| predicate(package_filename));
-    out.conda_packages
-        .retain(|package_filename, _| predicate(package_filename));
-    if out.base_url().is_none() {
+    let mut out = RefRepoData {
+        info: initial.info.clone(),
+        removed: initial.removed.iter().map(String::as_str).collect(),
+        version: initial.version,
+        packages: HashMap::with_capacity(initial.packages.len()),
+        conda_packages: HashMap::with_capacity(initial.conda_packages.len()),
+    };
+
+    out.packages.extend(
+        initial
+            .packages
+            .iter()
+            .map(|(pkfn, pr)| (pkfn.as_str(), pr))
+            .filter(|(package_filename, _)| predicate(package_filename)),
+    );
+    out.conda_packages.extend(
+        initial
+            .conda_packages
+            .iter()
+            .map(|(pkfn, pr)| (pkfn.as_str(), pr))
+            .filter(|(package_filename, _)| predicate(package_filename)),
+    );
+
+    if initial.base_url().is_none() {
         // In conda's unit tests, they did not include a trailing slash on base_url.
         let url = Some(format!("{possible_replacement_base_url}{subdir}"));
         match out.info {
