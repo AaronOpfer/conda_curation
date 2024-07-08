@@ -101,6 +101,23 @@ impl<'a> std::fmt::Display for RemovedWithFeatureLog<'a> {
     }
 }
 
+pub struct RemovedIncompatibleArchitectureLog<'a> {
+    pub filename: &'a str,
+    pub package_name: &'a str,
+    pub virtual_package: &'a str,
+    pub actual_architecture: &'a str,
+}
+
+impl<'a> std::fmt::Display for RemovedIncompatibleArchitectureLog<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} removed: relies on {} which is impossible in {}",
+            self.filename, self.virtual_package, self.actual_architecture
+        )
+    }
+}
+
 macro_rules! impl_Log {
     (for $($t:ty),+) => {
         $(impl<'a> Log<'a> for $t {
@@ -113,4 +130,4 @@ macro_rules! impl_Log {
         })*
     }
 }
-impl_Log!(for RemovedWithFeatureLog<'a>, RemovedByDevRcPolicyLog<'a>, RemovedUnsatisfiableLog<'a>, RemovedBecauseIncompatibleLog<'a>, RemovedBySupercedingBuildLog<'a>, RemovedByUserLog<'a>);
+impl_Log!(for RemovedWithFeatureLog<'a>, RemovedByDevRcPolicyLog<'a>, RemovedUnsatisfiableLog<'a>, RemovedBecauseIncompatibleLog<'a>, RemovedBySupercedingBuildLog<'a>, RemovedByUserLog<'a>, RemovedIncompatibleArchitectureLog<'a>);

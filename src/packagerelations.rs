@@ -1,6 +1,7 @@
 use crate::logs::{
     RemovedBecauseIncompatibleLog, RemovedByDevRcPolicyLog, RemovedBySupercedingBuildLog,
-    RemovedByUserLog, RemovedUnsatisfiableLog, RemovedWithFeatureLog,
+    RemovedByUserLog, RemovedIncompatibleArchitectureLog, RemovedUnsatisfiableLog,
+    RemovedWithFeatureLog,
 };
 use crate::matchspeccache::MatchspecCache;
 use bitvec::vec::BitVec;
@@ -9,6 +10,25 @@ use rattler_conda_types::{NamelessMatchSpec, PackageRecord};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
+
+/// Provided some architecture subdir name, return the virtual packages that are unsatisfiable.
+fn get_virtual_package_bans(architecture: &str) -> &'static [&'static str] {
+    let mut iter = architecture.splitn(2, '-');
+    let os = iter.next();
+    if os.is_none() {
+        return &[];
+    }
+    let os = os.unwrap();
+    match os {
+        "osx" | "freebsd" => &["__linux", "__win", "__glibc"],
+        "linux" => &["__osx", "__win"],
+        "win" => &["__linux", "__unix", "__glibc", "__osx"],
+        _ => {
+            eprintln!("subdir {architecture} virtual bans not understood");
+            &[]
+        }
+    }
+}
 
 struct DependencyKey<'a> {
     name: &'a str,
@@ -318,6 +338,41 @@ impl<'a> PackageRelations<'a> {
                 }
             })
             .collect();
+        for res in &result {
+            self.removed
+                .set(self.filename_to_metadata[res.filename].index(), true);
+        }
+        result
+    }
+
+    pub fn apply_incompatible_architecture(
+        &mut self,
+        architecture: &'a str,
+    ) -> Vec<RemovedIncompatibleArchitectureLog<'a>> {
+        let result: Vec<RemovedIncompatibleArchitectureLog<'a>> =
+            (*get_virtual_package_bans(architecture))
+                .into_par_iter()
+                .copied()
+                .filter_map(|depending_on| {
+                    self.package_dependencies
+                        .get(depending_on)
+                        .map(|d| (depending_on, d))
+                })
+                .flat_map(|(dependency_name, dependencies)| {
+                    dependencies
+                        .par_iter()
+                        .flat_map(|(_, dependency)| dependency.dependers.par_iter())
+                        .map(|pkgindex| {
+                            let package = &self.package_metadatas[pkgindex.index()];
+                            RemovedIncompatibleArchitectureLog {
+                                filename: package.filename,
+                                package_name: package.package_record.name.as_source(),
+                                virtual_package: dependency_name,
+                                actual_architecture: architecture,
+                            }
+                        })
+                })
+                .collect();
         for res in &result {
             self.removed
                 .set(self.filename_to_metadata[res.filename].index(), true);

@@ -139,6 +139,7 @@ async fn main() {
         .map(|(repodata_arch, architecture)| {
             println!("{architecture}-----");
             let removed_filenames = filter_repodata(
+                architecture,
                 &args,
                 &matchspec_cache,
                 &user_matchspecs,
@@ -220,6 +221,7 @@ fn perform_round<'a, F, S, L>(
 }
 
 fn filter_repodata<'a>(
+    architecture: &'a str,
     args: &'a Cli,
     matchspec_cache: &'a MatchspecCache<'a, 'a>,
     user_matchspecs: &'a std::collections::HashMap<
@@ -269,6 +271,13 @@ fn filter_repodata<'a>(
     perform_round(
         "dev & rc",
         || relations.apply_dev_rc_ban(args.ban_dev, args.ban_rc),
+        &mut removed_filenames,
+        &mut next_round,
+        args.explain,
+    );
+    perform_round(
+        "incompat arch",
+        || relations.apply_incompatible_architecture(architecture),
         &mut removed_filenames,
         &mut next_round,
         args.explain,
