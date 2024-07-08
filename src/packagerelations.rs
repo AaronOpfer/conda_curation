@@ -373,9 +373,18 @@ impl<'a> PackageRelations<'a> {
                         })
                 })
                 .collect();
+        // Mark the packages as removed
         for res in &result {
             self.removed
                 .set(self.filename_to_metadata[res.filename].index(), true);
+        }
+        // Mark the dependencies as unresolveable
+        for virtual_package_name in get_virtual_package_bans(architecture) {
+            if let Some(matchspec_map) = self.package_dependencies.get_mut(virtual_package_name) {
+                for dependency in matchspec_map.values_mut() {
+                    dependency.unsatisfiable = true;
+                }
+            }
         }
         result
     }
@@ -507,6 +516,15 @@ impl<'a> PackageRelations<'a> {
         }
     }
 
+    pub fn find_all_unresolveables(&mut self) -> Vec<RemovedUnsatisfiableLog<'a>> {
+        return self.find_unresolveables(
+            self.package_dependencies
+                .keys()
+                .map(|d| *d)
+                .filter(|d| !d.starts_with("__"))
+                .collect(),
+        );
+    }
     pub fn find_unresolveables(
         &mut self,
         depending_ons: Vec<&'a str>,

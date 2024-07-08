@@ -330,7 +330,13 @@ fn unresolveable<'a>(
         next_round.clear();
         perform_round(
             format!("No Sln Round {round}"),
-            || relations.find_unresolveables(this_round.into_iter().collect()),
+            || {
+                if round == 1 {
+                    relations.find_all_unresolveables()
+                } else {
+                    relations.find_unresolveables(this_round.into_iter().collect())
+                }
+            },
             removed_filenames,
             &mut next_round,
             explain,
