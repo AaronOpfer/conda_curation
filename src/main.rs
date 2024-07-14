@@ -18,22 +18,22 @@ use clap::Parser;
 use rayon::prelude::*;
 
 const ARCHITECTURES: &[&str] = &[
-    "freebsd-64",
-    "linux-32",
+    //"freebsd-64",
+    //"linux-32",
     "linux-64",
     "linux-aarch64",
-    "linux-armv6l",
-    "linux-armv7l",
-    "linux-ppc64",
+    //"linux-armv6l",
+    //"linux-armv7l",
+    //"linux-ppc64",
     "linux-ppc64le",
-    "linux-riscv64",
-    "linux-s390x",
+    //"linux-riscv64",
+    //"linux-s390x",
     "osx-64",
     "osx-arm64",
-    "win-32",
+    //"win-32",
     "win-64",
-    "win-arm64",
-    "zos-z",
+    //"win-arm64",
+    //"zos-z",
 ];
 
 fn architectures_parser(value: &str) -> Result<String, &'static str> {
