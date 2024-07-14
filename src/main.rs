@@ -282,12 +282,7 @@ fn filter_repodata<'a>(
         &mut next_round,
         args.explain,
     );
-    unresolveable(
-        &mut relations,
-        &mut removed_filenames,
-        &next_round,
-        args.explain,
-    );
+    unresolveable(&mut relations, &mut removed_filenames, None, args.explain);
 
     for package_name in &args.must_compatible {
         perform_round(
@@ -300,7 +295,7 @@ fn filter_repodata<'a>(
         unresolveable(
             &mut relations,
             &mut removed_filenames,
-            &next_round,
+            Some(&next_round),
             args.explain,
         );
     }
@@ -316,27 +311,46 @@ fn filter_repodata<'a>(
     removed_filenames
 }
 
+/// Find packages which definitely have no possible solution and remove them. This operation is
+/// recursive, i.e. once some packages are removed for being unsolveable, this may make additional
+/// packages unsolveable, and this operation will handle this appropriately.
+/// If the `test_set` is None, then all packages in the entire repodata will be tested. Otherwise,
+/// if `test_set` is provided, analysis will begin at packages that depend on the affected package
+/// set.
 fn unresolveable<'a>(
     relations: &mut PackageRelations<'a>,
     removed_filenames: &mut HashSet<&'a str>,
-    test_set: &HashSet<&'a str>,
+    test_set: Option<&HashSet<&'a str>>,
     explain: bool,
 ) {
     let mut round = 0;
-    let mut next_round: HashSet<&'a str> = test_set.clone();
+
+    let mut next_round: HashSet<&'a str>;
+
+    // Are we analyzing the entire repodata or just a subset?
+    match test_set {
+        None => {
+            next_round = HashSet::new();
+            round += 1;
+            perform_round(
+                format!("No Sln Round {round}"),
+                || relations.find_all_unresolveables(),
+                removed_filenames,
+                &mut next_round,
+                explain,
+            );
+        }
+        Some(test_set) => next_round = test_set.clone(),
+    }
+
+    // Keep attempting to remove packages until a round fails to remove any packages at all.
     while !next_round.is_empty() {
         round += 1;
         let this_round = next_round.clone();
         next_round.clear();
         perform_round(
             format!("No Sln Round {round}"),
-            || {
-                if round == 1 {
-                    relations.find_all_unresolveables()
-                } else {
-                    relations.find_unresolveables(this_round.into_iter().collect())
-                }
-            },
+            || relations.find_unresolveables(this_round.into_iter().collect()),
             removed_filenames,
             &mut next_round,
             explain,
