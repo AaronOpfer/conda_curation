@@ -6,6 +6,7 @@ use crate::logs::{
 use crate::matchspeccache::MatchspecCache;
 use bitvec::vec::BitVec;
 use itertools::Itertools;
+use rattler_conda_types::Matches;
 use rattler_conda_types::{NamelessMatchSpec, PackageRecord};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
