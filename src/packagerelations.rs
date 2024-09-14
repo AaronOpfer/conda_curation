@@ -233,15 +233,23 @@ impl<'a> PackageRelations<'a> {
 
     pub fn apply_build_prune(&mut self) -> Vec<RemovedBySupercedingBuildLog<'a>> {
         let mut result = Vec::new();
-        for (_, packages) in &self.package_metadatas[..].iter().chunk_by(|pkg| {
-            let r = &pkg.package_record;
-            let buildnumstr = r.build_number.to_string();
-            let mut build: &str = &r.build;
-            if build.ends_with(&buildnumstr) {
-                build = &build[0..(build.len() - buildnumstr.len())];
-            }
-            (r.name.as_source(), &r.version, build)
-        }) {
+        let pattern = regex::Regex::new(r".*h[\da-zA-Z]{7}.+\d").unwrap();
+        for (_, packages) in &self.package_metadatas[..]
+            .iter()
+            .filter(|pkg| {
+                let build = &pkg.package_record.build;
+                pattern.is_match(build)
+            })
+            .chunk_by(|pkg| {
+                let r = &pkg.package_record;
+                let buildnumstr = r.build_number.to_string();
+                let mut build: &str = &r.build;
+                if build.ends_with(&buildnumstr) {
+                    build = &build[0..(build.len() - buildnumstr.len())];
+                }
+                (r.name.as_source(), &r.version, build)
+            })
+        {
             let packages: Vec<&PackageMetadata> = packages.collect();
             if packages.len() < 2 {
                 continue;
