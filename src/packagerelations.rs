@@ -529,7 +529,7 @@ impl<'a> PackageRelations<'a> {
         return self.find_unresolveables(
             self.package_dependencies
                 .keys()
-                .map(|d| *d)
+                .copied()
                 .filter(|d| !d.starts_with("__"))
                 .collect(),
         );
