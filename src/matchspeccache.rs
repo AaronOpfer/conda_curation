@@ -60,9 +60,9 @@ mod tests {
     #[test]
     fn matchspec_cache() {
         let cache = MatchspecCache::with_capacity(8);
-        let spec1 = cache.get_or_insert("python 3.6");
-        let spec2 = cache.get_or_insert("python 3.6");
-        let spec3 = cache.get_or_insert("python 3.7");
+        let spec1 = cache.get_or_insert("python 3.6").unwrap();
+        let spec2 = cache.get_or_insert("python 3.6").unwrap();
+        let spec3 = cache.get_or_insert("python 3.7").unwrap();
         assert!(std::ptr::eq(spec1, spec2));
         assert_ne!(spec2, spec3);
     }
