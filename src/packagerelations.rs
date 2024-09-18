@@ -663,3 +663,58 @@ impl<'a> PackageRelations<'a> {
         ));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::packagerelations::{MatchspecCache, PackageRelations};
+    use rattler_conda_types::{PackageName, PackageRecord, VersionWithSource};
+    use std::iter::zip;
+    use std::str::FromStr;
+
+    fn mkpkg(name: &str, version: &str, build: &str, build_number: u64) -> PackageRecord {
+        let mut pkgrecord = PackageRecord::new(
+            PackageName::try_from(name).unwrap(),
+            VersionWithSource::from_str(version).unwrap(),
+            build.to_string(),
+        );
+        pkgrecord.build_number = build_number;
+        pkgrecord
+    }
+
+    #[test]
+    fn test_apply_build_prune_happy_path() {
+        let mut pr = PackageRelations::new();
+        let cache = MatchspecCache::with_capacity(8);
+
+        let records = [
+            mkpkg("arrow-cpp", "1.5.1", "asdf_h1234567_1", 1),
+            mkpkg("arrow-cpp", "1.5.1", "asdf_h1234567_2", 2),
+            mkpkg("arrow-cpp", "1.5.1", "asdf_h1234567_3", 3),
+            mkpkg("arrow-cpp", "1.5.1", "asdf_h1234567_4", 4),
+        ];
+        let names = ["1", "2", "3", "4"];
+        for (name, record) in zip(names, &records) {
+            pr.insert(&cache, name, record);
+        }
+        let results = pr.apply_build_prune();
+        assert!(results.len() == 3);
+    }
+
+    #[test]
+    fn test_apply_build_prune_no_remove_hashfree_builds() {
+        let mut pr = PackageRelations::new();
+        let cache = MatchspecCache::with_capacity(8);
+
+        let records = [
+            mkpkg("arrow-cpp", "1.5.1", "1", 1),
+            mkpkg("arrow-cpp", "1.5.1", "2", 2),
+            mkpkg("arrow-cpp", "1.5.1", "3", 3),
+            mkpkg("arrow-cpp", "1.5.1", "4", 4),
+        ];
+        let names = ["1", "2", "3", "4"];
+        for (name, record) in zip(names, &records) {
+            pr.insert(&cache, name, record);
+        }
+        assert!(pr.apply_build_prune().is_empty());
+    }
+}
