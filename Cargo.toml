@@ -2,7 +2,7 @@
 name = "conda_curation"
 version = "0.8.0"
 edition = "2021"
-rust-version = "1.81.0"
+rust-version = "1.85.0"
 license = "MIT"
 description = "Reduce conda repodata to enforce policy and speed up solves. Alpha software."
 repository = "https://github.com/AaronOpfer/conda_curation"
