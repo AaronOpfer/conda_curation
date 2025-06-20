@@ -117,7 +117,7 @@ pub fn filtered_repodata_to_file<'a>(
         match out.info {
             None => {
                 out.info = Some(ChannelInfo {
-                    subdir: subdir.to_string(),
+                    subdir: Some(subdir.to_string()),
                     base_url: url,
                 });
             }
