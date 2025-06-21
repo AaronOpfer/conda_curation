@@ -553,7 +553,7 @@ dependencies = [
 
 [[package]]
 name = "conda_curation"
-version = "0.8.0"
+version = "0.8.3"
 dependencies = [
  "bitvec",
  "clap",
